@@ -1,0 +1,156 @@
+name: PNE Daily Task Reminder
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 01:00 UTC = 08:00 Vietnam
+    - cron: '*/5 * * * *' # Poll Schedule reminders; Python uses Vietnam time
+  workflow_dispatch:
+    inputs:
+      force_send:
+        description: 'Gửi lại dù hôm nay đã gửi rồi'
+        required: false
+        default: false
+        type: boolean
+permissions:
+  contents: write
+concurrency:
+  group: pne-daily-reminder
+  cancel-in-progress: false
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and send Telegram reminder from Supabase
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FORCE_SEND: ${{ github.event.inputs.force_send || 'false' }}
+          SCHEDULE_EXPR: ${{ github.event.schedule || '' }}
+        run: |
+          python - <<'PY'
+          import urllib.request, urllib.parse, json, os
+          from datetime import datetime, date, timedelta
+          from zoneinfo import ZoneInfo
+          from pathlib import Path
+
+          BASE='https://dqxbyikczcfqinxobvsq.supabase.co/rest/v1'
+          key=os.environ.get('SUPABASE_SERVICE_ROLE_KEY','')
+          token=os.environ.get('BOT_TOKEN','')
+          chat=os.environ.get('CHAT_ID','')
+          if not key: raise SystemExit('Missing SUPABASE_SERVICE_ROLE_KEY secret')
+          if not token or not chat: raise SystemExit('Missing Telegram secrets')
+
+          TZ=ZoneInfo('Asia/Ho_Chi_Minh')
+          now=datetime.now(TZ)
+          today=now.date()
+          today_iso=today.isoformat()
+          wd=today.isoweekday()
+          week_start=today-timedelta(days=wd-1)
+          force=os.environ.get('FORCE_SEND','false').lower()=='true'
+          schedule_expr=os.environ.get('SCHEDULE_EXPR','')
+
+          def get(table,select):
+            req=urllib.request.Request(f'{BASE}/{table}?select={urllib.parse.quote(select)}',headers={'apikey':key,'Authorization':'Bearer '+key})
+            with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read())
+
+          def send(text):
+            payload=urllib.parse.urlencode({'chat_id':chat,'text':text}).encode()
+            req=urllib.request.Request(f'https://api.telegram.org/bot{token}/sendMessage',data=payload,method='POST')
+            with urllib.request.urlopen(req,timeout=30) as r:return json.loads(r.read())
+
+          def d(v):
+            try:return date.fromisoformat(v) if v else None
+            except:return None
+
+          DONE=('Hoàn thành','Đã hoàn thành','Đã chốt','Đã đăng')
+          daily_state_path=Path('automation/daily-reminder-state.json')
+          try: daily_state=json.loads(daily_state_path.read_text(encoding='utf-8')) if daily_state_path.exists() else {}
+          except: daily_state={}
+          daily_sent=daily_state.get('last_sent_date')==today_iso
+
+          # Daily Brief: exactly 08:00 Vietnam local time. The workflow itself
+          # runs in UTC; this explicit timezone conversion prevents the old 12–13h issue.
+          if force or (schedule_expr=='0 1 * * *' and now.hour==8 and not daily_sent):
+            tasks=get('tasks','id,task_code,name,work_mode,channel_group,execution_date,deadline,status,project_id,weekday_start,weekday_end')
+            instances=get('task_weekly_instances','task_id,week_start,status')
+            imap={(x['task_id'],x['week_start']):x['status'] for x in instances}
+            content=get('content','content_code,topic,channel,publish_date,processing_deadline,status')
+            projects={x['id']:x['name'] for x in get('projects','id,name')}
+            schedules=get('personal_schedule','id,title,event_date,start_time,end_time,location,reminder_minutes,completed,url,notes')
+
+            today_items=[]; due=[]; overdue=[]
+            for x in tasks:
+              suffix=f" [Project: {projects[x['project_id']]}]" if x.get('project_id') in projects else (f" [{x['channel_group']}]" if x.get('channel_group') else '')
+              item=f"• {x.get('name') or x.get('task_code') or 'Task'}{suffix}"
+              if x.get('work_mode')=='routine':
+                st=imap.get((x['id'],week_start.isoformat()),'Chưa bắt đầu')
+                a=x.get('weekday_start'); b=x.get('weekday_end')
+                if st in DONE or not a or not b: continue
+                if a<=wd<=b: today_items.append(item+f' — lịch T{a}→T{b}')
+                if wd==b: due.append(item+' — hạn tuần hôm nay')
+                elif wd>b: overdue.append(item+f' — trễ lịch tuần {wd-b} ngày')
+                continue
+              if x.get('status') in DONE: continue
+              if d(x.get('execution_date'))==today: today_items.append(item)
+              dl=d(x.get('deadline'))
+              if dl==today: due.append(item)
+              elif dl and dl<today: overdue.append(item+f' — trễ {(today-dl).days} ngày')
+
+            for x in content:
+              if x.get('status') in DONE: continue
+              item=f"• {x.get('content_code') or ''} · {x.get('topic') or 'Content'}"+(f" [{x.get('channel')}]" if x.get('channel') else '')
+              if d(x.get('publish_date'))==today: today_items.append(item)
+              dl=d(x.get('processing_deadline'))
+              if dl==today: due.append(item)
+              elif dl and dl<today: overdue.append(item+f' — trễ {(today-dl).days} ngày')
+
+            todays=[x for x in schedules if d(x.get('event_date'))==today and not x.get('completed')]
+            schedule_lines=[]
+            for x in sorted(todays,key=lambda z:z.get('start_time') or '99:99'):
+              tm=str(x.get('start_time') or '')[:5]
+              schedule_lines.append(f"• {tm+' · ' if tm else ''}{x.get('title') or 'Lịch trình'}"+(f" — {x.get('location')}" if x.get('location') else ''))
+
+            lines=[f'☀️ PNE Daily Reminder · {today.strftime("%d/%m/%Y")}','','🗓 Việc hôm nay']+(today_items or ['• Không có task theo lịch hôm nay'])+['','⏰ Tới deadline hôm nay']+(due or ['• Không có task tới deadline'])+['','🔴 Quá hạn']+(overdue or ['• Không có task quá hạn 🎉'])+['','◷ Lịch trình hôm nay']+(schedule_lines or ['• Không có lịch trình hôm nay'])
+            send('\n'.join(lines))
+            daily_state_path.parent.mkdir(parents=True,exist_ok=True)
+            daily_state.update({'last_sent_date':today_iso,'last_sent_at':now.isoformat(),'source':'supabase-asia-ho-chi-minh','today_count':len(today_items),'due_count':len(due),'overdue_count':len(overdue),'schedule_count':len(todays)})
+            daily_state_path.write_text(json.dumps(daily_state,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          # Schedule reminders: Telegram, based on reminder_minutes.
+          # Checked every 15 minutes, using Asia/Ho_Chi_Minh local time.
+          schedules=get('personal_schedule','id,title,event_date,start_time,end_time,location,reminder_minutes,completed,url,notes')
+          reminder_path=Path('automation/schedule-reminder-state.json')
+          try: reminder_state=json.loads(reminder_path.read_text(encoding='utf-8')) if reminder_path.exists() else {}
+          except: reminder_state={}
+          sent_keys=set(reminder_state.get('sent_keys',[]))
+          changed=False
+          for x in schedules:
+            if x.get('completed') or x.get('reminder_minutes') is None or d(x.get('event_date'))!=today or not x.get('start_time'): continue
+            hhmm=str(x['start_time'])[:5]
+            try: event=datetime.combine(today,datetime.strptime(hhmm,'%H:%M').time(),tzinfo=TZ)
+            except: continue
+            remind_at=event-timedelta(minutes=int(x['reminder_minutes']))
+            key_id=f"{x['id']}|{today_iso}|{int(x['reminder_minutes'])}"
+            if key_id in sent_keys or not (remind_at<=now<remind_at+timedelta(minutes=10)): continue
+            msg=f"🔔 Nhắc lịch · {x.get('title') or 'Lịch trình'}\n⏰ Bắt đầu: {hhmm}\nCòn khoảng {x['reminder_minutes']} phút."
+            if x.get('location'): msg+=f"\n📍 {x['location']}"
+            send(msg)
+            sent_keys.add(key_id)
+            changed=True
+
+          if changed:
+            reminder_state['sent_keys']=sorted(sent_keys)[-500:]
+            reminder_state['updated_at']=now.isoformat()
+            reminder_path.parent.mkdir(parents=True,exist_ok=True)
+            reminder_path.write_text(json.dumps(reminder_state,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+      - name: Persist send state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add automation/daily-reminder-state.json automation/schedule-reminder-state.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore: record Telegram reminder state"
+          git push

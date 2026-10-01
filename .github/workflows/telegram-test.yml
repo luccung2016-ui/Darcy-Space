@@ -1,0 +1,21 @@
+name: Test Telegram PNE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test message
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID"
+            exit 1
+          fi
+          curl --fail-with-body -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode $'text=✅ PNE Content Reminder đã kết nối thành công!\n\nĐây là tin nhắn kiểm tra từ GitHub Actions. Sau bước này, hệ thống sẽ chỉ nhắc các công việc đến deadline nhưng chưa hoàn thành.'
