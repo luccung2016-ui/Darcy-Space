@@ -151,3 +151,6 @@
 .search-hint{margin-top:8px;padding:0 4px}
 .search-kbd{font-size:10px;color:var(--mut);border:1px solid var(--bd);border-radius:5px;padding:1px 4px;margin-left:2px}
 @media(max-width:650px){.search-kbd{display:none}.darcy-toast{bottom:84px}.darcy-sheet-bg,.darcy-search-bg{padding-top:3vh}}
+/* Overview: unified day sets */
+.workitem.is-overdue>b{color:var(--r)}
+.more-link{margin-top:10px;width:100%;font-size:12px}
