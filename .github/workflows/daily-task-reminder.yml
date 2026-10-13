@@ -1,9 +1,8 @@
 name: PNE Daily Task Reminder
 
 on:
-  schedule:
-    - cron: '0 1 * * *' # 01:00 UTC = 08:00 Vietnam
-    - cron: '*/5 * * * *' # Poll Schedule reminders; Python uses Vietnam time
+  # Lịch tự động đã chuyển sang Supabase pg_cron (supabase/telegram_reminders.sql)
+  # vì GitHub chạy cron rất trễ. Giữ workflow này để chạy tay khi cần.
   workflow_dispatch:
     inputs:
       force_send:
