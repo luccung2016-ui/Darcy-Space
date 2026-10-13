@@ -156,4 +156,6 @@ const baseRenderTasks=renderTasks;
 renderTasks=function(){baseRenderTasks();$$('#taskBox tbody tr[data-id]').forEach(row=>{const task=D.tasks.find(item=>item.id===row.dataset.id);if(task&&row.children[1])row.children[1].textContent=task.work_mode==='routine'?'Task cố định':task.work_mode==='project'?'Theo Project':'Task phát sinh'})};
 
 setTimeout(async()=>{await loadWorkLinks();refreshLinkedViews();if($('#calendar')?.classList.contains('on'))calendar()},700);
+// Re-render the active view whenever core data finishes syncing.
+d.addEventListener('darcy:synced',()=>{let active=$$('.nav button').find(b=>b.classList.contains('on'))?.dataset.space||'overview';show(active)});
 })();
