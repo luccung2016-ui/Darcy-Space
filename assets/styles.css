@@ -107,3 +107,6 @@
 .top h1{font-size:24px}
 .projectgrid{grid-template-columns:1fr}
 }
+/* Filter bars wrap instead of overflowing on small screens */
+.contextbar{flex-wrap:wrap}
+.contextbar select,.contextbar input{min-width:0;max-width:100%}
