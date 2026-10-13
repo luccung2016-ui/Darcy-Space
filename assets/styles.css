@@ -86,3 +86,24 @@
 .xlabels{display:flex;gap:18px;padding:0 6px}
 .xlabels .barlab{flex:1;margin-top:0;text-align:center;font-size:11px}
 .chart{height:auto;min-height:245px}
+/* Responsive sidebar: icon rail on tablets, bottom bar on phones */
+.main{min-width:0}
+#taskBox,.panel.subcard{overflow-x:auto}
+@media(max-width:850px){
+.side{min-width:0;padding:20px 10px}
+.side .brand-space,.side .brand-sub{display:none}
+.nav{margin-top:0}
+.nav button{text-align:center;font-size:18px;padding:12px 0}
+.top{flex-wrap:wrap}
+.top .actions{flex-wrap:wrap;justify-content:flex-start}
+}
+@media(max-width:650px){
+.app{grid-template-columns:1fr}
+.side{position:fixed;left:0;right:0;bottom:0;z-index:40;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:#a81016;box-shadow:0 -6px 20px #10182822}
+.nav{grid-template-columns:repeat(6,1fr);gap:2px}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 2px;font-size:17px;min-width:0}
+.side .nav span{display:block;max-width:100%;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main{padding:14px 14px 88px}
+.top h1{font-size:24px}
+.projectgrid{grid-template-columns:1fr}
+}
