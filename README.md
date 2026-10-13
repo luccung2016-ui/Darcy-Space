@@ -17,7 +17,17 @@ Personal marketing operations dashboard for planning projects, tasks, schedules,
 - `automation/` — Telegram reminder state.
 - `.github/workflows/` — Pages deployment and Telegram automation.
 
-## Required GitHub Actions secrets
+## Telegram reminders
+
+Reminders run inside Supabase with `pg_cron` + `pg_net` (`supabase/telegram_reminders.sql`):
+
+- Schedule reminders every minute, based on `reminder_minutes`.
+- Daily brief at 08:00 and evening recap at 18:00 (Vietnam time).
+- Bot token and chat id are stored in Supabase Vault as `telegram_bot_token` and `telegram_chat_id`.
+
+The GitHub workflow `daily-task-reminder.yml` is kept for manual runs only.
+
+## Required GitHub Actions secrets (manual workflow only)
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
