@@ -24,6 +24,7 @@ create table if not exists darcy_bot.sent_log (
   key text primary key,
   sent_at timestamptz not null default now()
 );
+alter table darcy_bot.sent_log enable row level security;
 
 -- Giờ Việt Nam ---------------------------------------------------------
 create or replace function darcy_bot.vn_now() returns timestamp
@@ -43,7 +44,19 @@ language sql immutable as $$
 $$;
 
 -- Gửi tin nhắn Telegram (HTML) -----------------------------------------
-create or replace function darcy_bot.send(message text) returns bigint
+-- Hàng đợi gửi: mỗi tin được lưu lại để tự gửi lại nếu Telegram lỗi/timeout
+create table if not exists darcy_bot.outbox (
+  id bigserial primary key,
+  message text not null,
+  request_id bigint,
+  attempts int not null default 1,
+  delivered boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table darcy_bot.outbox enable row level security;
+
+-- Gửi thẳng 1 request HTTP tới Telegram (timeout 20 giây)
+create or replace function darcy_bot.post_telegram(message text) returns bigint
 language plpgsql security definer set search_path = public, extensions, darcy_bot as $$
 declare
   bot_token text;
@@ -57,8 +70,45 @@ begin
   return net.http_post(
     url := 'https://api.telegram.org/bot' || bot_token || '/sendMessage',
     body := jsonb_build_object('chat_id', chat, 'text', message, 'parse_mode', 'HTML', 'disable_web_page_preview', true),
-    headers := '{"Content-Type": "application/json"}'::jsonb
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    timeout_milliseconds := 20000
   );
+end $$;
+
+create or replace function darcy_bot.send(message text) returns bigint
+language plpgsql security definer set search_path = public, extensions, darcy_bot as $$
+declare
+  req bigint := post_telegram(message);
+begin
+  insert into outbox(message, request_id) values (message, req);
+  return req;
+end $$;
+
+-- Gửi lại tin bị lỗi (tối đa 5 lần, trong vòng 6 tiếng) — chạy mỗi phút
+create or replace function darcy_bot.retry_failed() returns int
+language plpgsql security definer set search_path = public, extensions, darcy_bot as $$
+declare
+  item record;
+  resp record;
+  retried int := 0;
+begin
+  for item in
+    select * from outbox
+    where not delivered and attempts < 5 and created_at > now() - interval '6 hours'
+    order by id
+  loop
+    select status_code, timed_out into resp from net._http_response where id = item.request_id;
+    if not found then
+      continue;  -- request chưa xử lý xong
+    end if;
+    if resp.status_code = 200 then
+      update outbox set delivered = true where id = item.id;
+    else
+      update outbox set request_id = post_telegram(item.message), attempts = attempts + 1 where id = item.id;
+      retried := retried + 1;
+    end if;
+  end loop;
+  return retried;
 end $$;
 
 -- Ghi nhận đã gửi; trả về false nếu key đã gửi trước đó (chống gửi trùng)
@@ -263,15 +313,16 @@ revoke all on all tables in schema darcy_bot from public, anon, authenticated;
 
 -- Lịch chạy (pg_cron dùng giờ UTC: 01:00 UTC = 08:00 VN, 11:00 UTC = 18:00 VN)
 select cron.unschedule(jobid) from cron.job
-where jobname in ('darcy-schedule-reminders', 'darcy-daily-brief', 'darcy-evening-recap');
+where jobname in ('darcy-schedule-reminders', 'darcy-daily-brief', 'darcy-evening-recap', 'darcy-retry-failed');
 
 select cron.schedule('darcy-schedule-reminders', '* * * * *', 'select darcy_bot.schedule_reminders()');
 select cron.schedule('darcy-daily-brief',        '0 1 * * *', 'select darcy_bot.daily_brief()');
 select cron.schedule('darcy-evening-recap',      '0 11 * * *', 'select darcy_bot.evening_recap()');
+select cron.schedule('darcy-retry-failed',       '* * * * *', 'select darcy_bot.retry_failed()');
 
 -- Dọn log cũ mỗi Chủ nhật
 select cron.unschedule(jobid) from cron.job where jobname = 'darcy-cleanup-log';
-select cron.schedule('darcy-cleanup-log', '0 20 * * 0', $$delete from darcy_bot.sent_log where sent_at < now() - interval '30 days'$$);
+select cron.schedule('darcy-cleanup-log', '0 20 * * 0', $$delete from darcy_bot.sent_log where sent_at < now() - interval '30 days'; delete from darcy_bot.outbox where created_at < now() - interval '30 days'$$);
 
 -- KIỂM TRA SAU KHI CÀI (chạy riêng từng dòng):
 --   select darcy_bot.send('✅ Darcy Space đã kết nối Telegram');
