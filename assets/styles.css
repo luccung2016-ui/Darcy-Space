@@ -53,3 +53,14 @@
 .schedule-actions{display:flex;gap:7px;align-items:center}
 .schedule-actions .btn{padding:6px 9px;font-size:11px}
 .calendar-summary{margin:14px 0}
+/* Project progress */
+.progress{height:8px;border-radius:999px;background:#eef0f3;overflow:hidden;margin:14px 0 6px}
+.progress>span{display:block;height:100%;border-radius:inherit;background:var(--navy);transition:width .4s ease}
+.project-card.is-done .progress>span{background:var(--green)}
+.project-card.is-late .progress>span{background:var(--r)}
+.progress-meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mut)}
+.progress-meta b{color:var(--ink)}
+.progress-hint{margin-top:8px;font-size:12px;color:var(--mut)}
+.project-card.is-done .progress-hint{color:var(--green);font-weight:600}
+.project-card.is-soon .progress-hint{color:#b45309;font-weight:600}
+.project-card.is-late .progress-hint{color:var(--r);font-weight:600}
