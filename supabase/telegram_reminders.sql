@@ -264,8 +264,8 @@ begin
 
   perform send(
     '☀️ <b>Chào buổi sáng Darcy!</b> · ' || to_char(today, 'DD/MM/YYYY') || chr(10) ||
-    'Hôm nay: <b>' || coalesce(array_length(today_lines, 1), 0) || '</b> việc · <b>' ||
-    coalesce(array_length(due_lines, 1), 0) || '</b> deadline · <b>' ||
+    'Hôm nay: <b>' || (coalesce(array_length(today_lines, 1), 0) + coalesce(array_length(due_lines, 1), 0)) || '</b> việc cần làm · <b>' ||
+    coalesce(array_length(due_lines, 1), 0) || '</b> tới hạn · <b>' ||
     coalesce(array_length(overdue_lines, 1), 0) || '</b> quá hạn · <b>' ||
     coalesce(array_length(schedule_list, 1), 0) || '</b> lịch hẹn' || chr(10) || chr(10) ||
     block('🔴 Quá hạn — xử lý trước', overdue_lines, '• Không có, tuyệt vời 🎉') || chr(10) || chr(10) ||
