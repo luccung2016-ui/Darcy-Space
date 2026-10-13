@@ -210,13 +210,20 @@ async function afterScheduleChange(){if($('#calendar')?.classList.contains('on')
 d.addEventListener('click',event=>{const node=event.target.closest('#calendar [data-schedule-id], #overview [data-overview-schedule]');if(!node)return;event.preventDefault();event.stopImmediatePropagation();openScheduleSheet(node.dataset.scheduleId||node.dataset.overviewSchedule)},true);
 
 // --- 3. Overview drill-down + quick ticks on My Day ---
-function drillSets(){
-  const today=TODAY(),tasks=allTasks(),current=sets(),open=task=>!done(taskStatus(task));
-  const todayIds=new Set(current.today.map(task=>task.id));
-  const running=tasks.filter(task=>task.work_mode!=='routine'&&open(task)&&!todayIds.has(task.id)&&task.execution_date&&task.deadline&&task.execution_date<today&&task.deadline>today);
-  return{today:current.today,due:tasks.filter(task=>task.work_mode!=='routine'&&task.deadline===today&&open(task)),running,over:current.over,projects:allProjects()};
+// One shared rule for "today / due / overdue" used by Overview, the summary sheet and Telegram.
+function daySets(){
+  const today=TODAY(),weekday=(day=>day===0?7:day)(new Date().getDay()),tasks=allTasks(),open=task=>!done(taskStatus(task));
+  const isRoutine=task=>task.work_mode==='routine',hasWeek=task=>task.weekday_start&&task.weekday_end;
+  const span=task=>{const start=task.execution_date||task.deadline,end=task.deadline||task.execution_date;return start?[start,end]:null};
+  const todayList=tasks.filter(task=>{if(!open(task))return false;if(isRoutine(task))return hasWeek(task)&&weekday>=Number(task.weekday_start)&&weekday<=Number(task.weekday_end);const range=span(task);return !!range&&range[0]<=today&&range[1]>=today});
+  const due=tasks.filter(task=>open(task)&&(isRoutine(task)?hasWeek(task)&&weekday===Number(task.weekday_end):task.deadline===today));
+  const over=tasks.filter(task=>open(task)&&(isRoutine(task)?hasWeek(task)&&weekday>Number(task.weekday_end):!!task.deadline&&task.deadline<today));
+  const soon=tasks.filter(task=>{if(!open(task)||isRoutine(task))return false;const range=span(task);return !!range&&range[0]>today&&range[0]<=dateAdd(today,7)});
+  const dueIds=new Set(due.map(task=>task.id)),order=(a,b)=>(dueIds.has(b.id)-dueIds.has(a.id))||String(a.deadline||'9').localeCompare(String(b.deadline||'9'));
+  return{today:todayList.sort(order),due,over:over.sort(order),soon:soon.sort((a,b)=>String(a.execution_date||a.deadline).localeCompare(String(b.execution_date||b.deadline)))};
 }
-const DRILL_TABS=[['today','Hôm nay'],['due','Tới hạn hôm nay'],['over','Quá hạn'],['running','Đang chạy'],['projects','Projects']];
+function drillSets(){const sets=daySets();return{...sets,projects:allProjects()}}
+const DRILL_TABS=[['today','Hôm nay'],['due','Tới hạn hôm nay'],['over','Quá hạn'],['soon','Sắp tới 7 ngày'],['projects','Projects']];
 function scheduleText(task){return task.work_mode==='routine'?`Mỗi tuần ${w.darcyCore?.WD?.[task.weekday_start]||''} → ${w.darcyCore?.WD?.[task.weekday_end]||''}`:`${dd(task.execution_date)} → ${dd(task.deadline)}`}
 function drawDrill(key){
   const box=$('.darcy-sheet-bg .sheet-body');if(!box)return;const data=drillSets(),projectName=id=>allProjects().find(project=>project.id===id)?.name||'';
@@ -231,8 +238,17 @@ function drawDrill(key){
 function openDrill(key){openSheet('Tổng hợp công việc','',true);drawDrill(key)}
 d.addEventListener('click',event=>{const tile=event.target.closest('#overview .report-grid .metric');if(!tile)return;const index=[...tile.parentElement.children].indexOf(tile);openDrill(['today','due','over','projects'][index]||'today')});
 d.addEventListener('keydown',event=>{const tile=event.target.closest?.('#overview .report-grid .metric');if(tile&&(event.key==='Enter'||event.key===' ')){event.preventDefault();tile.click()}});
-const uxBaseOverview=overview;
-overview=async function(){await uxBaseOverview();$$('#overview .report-grid .metric').forEach(tile=>{tile.tabIndex=0;tile.setAttribute('role','button');tile.title='Xem danh sách chi tiết'});$$('#overview .workitem[data-edit="tasks"]').forEach(item=>{const task=allTasks().find(row=>row.id===item.dataset.id);if(task&&!done(taskStatus(task))&&!item.querySelector('.quick-done')){item.classList.add('has-tick');item.insertAdjacentHTML('afterbegin',tickButton(task))}})};
+overview=async function(){
+  const sets=daySets(),projects=allProjects(),activeProjects=projects.filter(project=>!done(project.status)),hour=new Date().getHours(),greet=hour<11?'Chào buổi sáng':hour<14?'Chào buổi trưa':hour<18?'Chào buổi chiều':'Chào buổi tối';
+  let schedules=[];try{schedules=(await w.darcyDB.select('personal_schedule')).filter(item=>item.event_date===TODAY()).sort((a,b)=>String(a.start_time||'99').localeCompare(String(b.start_time||'99')))}catch(error){}
+  const overIds=new Set(sets.over.map(task=>task.id)),focus=[...sets.over,...sets.today.filter(task=>!overIds.has(task.id))];
+  const card=(icon,title,mode,desc)=>{const list=focus.filter(task=>(task.work_mode==='routine'?'routine':task.work_mode==='project'?'project':'ad_hoc')===mode);return `<div class="panel"><div class="panel-head"><b>${icon} ${title}</b><span class="pill">${list.length}</span></div><div class="small">${desc}</div>${list.slice(0,5).map(taskItem).join('')||'<div class="empty" style="margin-top:10px">Không có việc hôm nay 🎉</div>'}${list.length>5?`<button type="button" class="btn more-link" data-open-drill="today">Xem tất cả ${list.length} việc →</button>`:''}</div>`};
+  const openSchedules=schedules.filter(item=>!item.completed);
+  $('#overview').innerHTML=`<div class="card"><b>${greet}, Darcy ✦</b><div class="small">Hôm nay có <b>${sets.today.length}</b> việc cần làm${sets.due.length?`, trong đó <b>${sets.due.length}</b> việc tới hạn`:''}${sets.over.length?` · <b class="danger">${sets.over.length}</b> việc quá hạn`:''}${openSchedules.length?` · <b>${openSchedules.length}</b> lịch hẹn`:''}.</div></div><div class="report-grid"><div class="metric"><span class="small">Hôm nay</span><b>${sets.today.length}</b><span class="small">Việc cần làm</span></div><div class="metric"><span class="small">Tới hạn hôm nay</span><b>${sets.due.length}</b><span class="small">Deadline hôm nay</span></div><div class="metric"><span class="small">Quá hạn</span><b class="${sets.over.length?'danger':''}">${sets.over.length}</b><span class="small">Cần ưu tiên</span></div><div class="metric"><span class="small">Projects</span><b>${activeProjects.length}</b><span class="small">Đang chạy / ${projects.length} tổng</span></div></div><h2>My Day</h2><div class="myday">${card('↻','Task cố định','routine','Việc lặp lại theo tuần, đến lịch hôm nay')}${card('⚡','Task phát sinh','ad_hoc','Việc phát sinh cần xử lý')}${card('▣','Theo Project','project','Task project đang trong thời hạn')}<div class="panel"><div class="panel-head"><b>◷ Lịch trình riêng</b><span class="pill">${openSchedules.length}</span></div><div class="small">Cuộc hẹn và lịch cá nhân hôm nay</div>${schedules.slice(0,5).map(item=>`<div class="workitem ${item.completed?'is-complete':''}" data-overview-schedule="${item.id}" style="${item.completed?'opacity:.55':''}"><b>${item.completed?'✓ ':''}${E(item.title)}</b><div class="small">${item.start_time?item.start_time.slice(0,5)+' · ':''}${E(item.location||'')}</div></div>`).join('')||'<div class="empty" style="margin-top:10px">Không có lịch hôm nay</div>'}</div></div>`;
+  $$('#overview .report-grid .metric').forEach(tile=>{tile.tabIndex=0;tile.setAttribute('role','button');tile.title='Xem danh sách chi tiết'});
+  $$('#overview .workitem[data-edit="tasks"]').forEach(item=>{const task=allTasks().find(row=>row.id===item.dataset.id);if(task&&!item.querySelector('.quick-done')){item.classList.add('has-tick');if(overIds.has(task.id))item.classList.add('is-overdue');item.insertAdjacentHTML('afterbegin',tickButton(task))}});
+  $$('#overview [data-open-drill]').forEach(button=>button.onclick=()=>openDrill(button.dataset.openDrill));
+};
 
 // --- 4. Cmd/Ctrl+K search ---
 let searchCache=null;
