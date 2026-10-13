@@ -69,3 +69,20 @@
 .project-done-btn{border-color:var(--green);color:var(--green);background:#fff;font-weight:600;padding:6px 10px;font-size:12px}
 .project-done-btn:hover{background:var(--green);color:#fff}
 .project-done-btn:disabled{opacity:.6;cursor:wait}
+/* Performance grouped chart */
+.chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px 16px;flex-wrap:wrap;margin-bottom:22px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--mut)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.plot{display:grid;grid-template-columns:auto 1fr;column-gap:8px;row-gap:6px}
+.yaxis{height:170px;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;line-height:12px;color:var(--mut);text-align:right;margin-top:-6px;margin-bottom:-6px}
+.groups{height:170px;display:flex;gap:18px;padding:0 6px;border-bottom:1px solid var(--bd);background:linear-gradient(var(--bd) 1px,transparent 1px) 0 0/100% 50%}
+.gbars{flex:1;min-width:0;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%}
+.gbar{position:relative;flex:1;max-width:56px;height:100%;display:flex;align-items:flex-end}
+.gfill{width:100%;border-radius:4px 4px 0 0;transition:opacity .15s}
+.gval{position:absolute;left:50%;transform:translateX(-50%);font-size:11px;font-weight:600;color:var(--ink);white-space:nowrap}
+.gbars:hover .gfill{opacity:.45}
+.gbars .gbar:hover .gfill{opacity:1}
+.xlabels{display:flex;gap:18px;padding:0 6px}
+.xlabels .barlab{flex:1;margin-top:0;text-align:center;font-size:11px}
+.chart{height:auto;min-height:245px}
