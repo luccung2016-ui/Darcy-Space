@@ -110,3 +110,44 @@
 /* Filter bars wrap instead of overflowing on small screens */
 .contextbar{flex-wrap:wrap}
 .contextbar select,.contextbar input{min-width:0;max-width:100%}
+/* UX pack: sheet, toast, quick done, drill-down, search */
+.darcy-sheet-bg,.darcy-search-bg{position:fixed;inset:0;z-index:60;background:#11182766;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px 16px;overflow-y:auto}
+.darcy-sheet{width:100%;max-width:560px;background:#fff;border-radius:16px;box-shadow:0 24px 60px #10182833;padding:18px 20px 20px}
+.darcy-sheet.wide{max-width:900px}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;font-size:16px}
+.sheet-close{padding:6px 10px}
+.sheet-form .check-row{display:flex;align-items:center;gap:9px;color:var(--ink)}
+.sheet-form .check-row input{width:auto}
+.sheet-form .formactions{display:flex;justify-content:flex-end;gap:8px}
+.darcy-toast{position:fixed;left:50%;bottom:24px;z-index:70;transform:translate(-50%,20px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:14px;max-width:calc(100vw - 32px);background:var(--ink);color:#fff;border-radius:12px;padding:11px 14px;font-size:13px;box-shadow:0 12px 30px #10182840;transition:opacity .2s,transform .2s}
+.darcy-toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast-undo{border:0;background:transparent;color:#ffb4b6;font-weight:700;cursor:pointer;padding:2px 4px}
+.quick-done{flex:none;width:22px;height:22px;border-radius:50%;border:1.5px solid #b9c0ca;background:#fff;color:transparent;font-size:12px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s}
+.quick-done:hover,.quick-done:focus-visible{border-color:var(--green);color:var(--green)}
+.quick-done:disabled{opacity:.6;cursor:wait}
+.workitem.has-tick{display:grid;grid-template-columns:auto 1fr;column-gap:10px;align-items:start}
+.workitem.has-tick>*:not(.quick-done){grid-column:2}
+.workitem.has-tick>.quick-done{grid-row:1/span 2;margin-top:2px}
+.timeline-segment .quick-done{position:absolute;right:3px;top:50%;width:16px;height:16px;font-size:9px;transform:translateY(-50%);opacity:0;border-width:1px}
+.timeline-segment:hover .quick-done,.timeline-segment .quick-done:focus-visible{opacity:1}
+#overview .report-grid .metric{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+#overview .report-grid .metric:hover,#overview .report-grid .metric:focus-visible{border-color:#f4a3a8;box-shadow:0 6px 18px #d1202614;outline:none}
+.drill-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.drill-tabs button .pill{margin-left:4px}
+.drill-scroll{overflow-x:auto;max-height:60vh;overflow-y:auto}
+.drill-table{width:100%;border-collapse:collapse;font-size:13px}
+.drill-table th{text-align:left;font-size:11px;color:var(--mut);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.drill-table td{padding:9px 8px;border-bottom:1px solid var(--bd);vertical-align:top}
+.drill-table tr.row{cursor:pointer}
+.drill-table tr.row:hover td{background:#fafbfc}
+.darcy-search{width:100%;max-width:620px;background:#fff;border-radius:16px;box-shadow:0 24px 60px #10182833;padding:12px}
+.darcy-search input{width:100%;font-size:16px;padding:12px 14px;border:1px solid var(--bd);border-radius:10px}
+.search-results{margin-top:8px;max-height:56vh;overflow-y:auto;display:grid;gap:2px}
+.search-hit{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:0;background:transparent;border-radius:10px;padding:9px 10px;cursor:pointer}
+.search-hit.on,.search-hit:hover{background:#f3f4f6}
+.search-icon{width:22px;text-align:center;color:var(--mut)}
+.search-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.search-text b,.search-text .small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-hint{margin-top:8px;padding:0 4px}
+.search-kbd{font-size:10px;color:var(--mut);border:1px solid var(--bd);border-radius:5px;padding:1px 4px;margin-left:2px}
+@media(max-width:650px){.search-kbd{display:none}.darcy-toast{bottom:84px}.darcy-sheet-bg,.darcy-search-bg{padding-top:3vh}}
