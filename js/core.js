@@ -46,7 +46,7 @@ const Darcy = (() => {
   const thisWeek = () => mondayOf(today());
 
   // ---------- Store ----------
-  const state = { tasks: [], projects: [], instances: [], links: [] };
+  const state = { tasks: [], projects: [], instances: [], links: [], schedules: [] };
 
   const taskKind = (task) =>
     task.work_mode === "routine" ? "routine" : task.work_mode === "project" ? "project" : "ad_hoc";
@@ -59,6 +59,15 @@ const Darcy = (() => {
       ? `Mỗi tuần ${WD[task.weekday_start] || ""} → ${WD[task.weekday_end] || ""}`
       : `${dd(task.execution_date)} → ${dd(task.deadline)}`;
   const projectTasks = (projectId) => state.tasks.filter((task) => task.project_id === projectId);
+  /** Personal schedules sorted by date + start time. */
+  const sortSchedules = (rows) =>
+    rows.sort((a, b) =>
+      ((a.event_date || "") + (a.start_time || "")).localeCompare((b.event_date || "") + (b.start_time || "")),
+    );
+  const scheduleWhen = (item) =>
+    dd(item.event_date) +
+    (item.start_time ? " · " + item.start_time.slice(0, 5) : "") +
+    (item.end_time ? " → " + item.end_time.slice(0, 5) : "");
   const linksFor = (table, id) => {
     const key = table === "tasks" ? "task_id" : "project_id";
     return state.links.filter((link) => link[key] === id).sort((a, b) => (a.position || 0) - (b.position || 0));
@@ -141,19 +150,26 @@ const Darcy = (() => {
 
   // ---------- Sync & auth ----------
   const dbState = () => document.getElementById("dbState");
-  /** Reload tasks, projects, weekly statuses and work links, then fire `darcy:synced`. */
+  /** Reload tasks, projects, weekly statuses, work links and schedules, then fire `darcy:synced`. */
   async function sync() {
     dbState().textContent = "Đang đồng bộ...";
     try {
       state.tasks = await db.select("tasks");
       state.projects = await db.select("projects");
       state.instances = await db.select("task_weekly_instances");
-      try {
-        state.links = await db.select("work_links");
-      } catch (error) {
-        state.links = [];
-        console.error("work_links", error);
+      // Optional tables: a failure here must not block tasks/projects.
+      for (const [key, table] of [
+        ["links", "work_links"],
+        ["schedules", "personal_schedule"],
+      ]) {
+        try {
+          state[key] = await db.select(table);
+        } catch (error) {
+          state[key] = [];
+          console.error(table, error);
+        }
       }
+      sortSchedules(state.schedules);
       dbState().textContent = "✓ Supabase đã đồng bộ";
       dbState().className = "pill ok";
       document.dispatchEvent(new Event("darcy:synced"));
@@ -194,6 +210,7 @@ const Darcy = (() => {
     taskSchedule,
     projectTasks,
     linksFor,
+    scheduleWhen,
     daySets,
     db,
     sync,
