@@ -154,3 +154,28 @@
 /* Overview: unified day sets */
 .workitem.is-overdue>b{color:var(--r)}
 .more-link{margin-top:10px;width:100%;font-size:12px}
+
+/* v6: Vietnamese nav with short mobile labels, schedule ticks, project reopen, library pins, performance deltas */
+.nav .nav-short{display:none}
+@media(max-width:650px){.side .nav .nav-full{display:none}.side .nav .nav-short{display:block}}
+.schedule-item.is-complete{opacity:.55}
+.schedule-item.is-overdue>b{color:var(--r)}
+.schedule-main{cursor:pointer;min-width:0}
+.project-reopen-btn{border-color:var(--bd);color:var(--ink);background:#fff;font-weight:600;padding:6px 10px;font-size:12px}
+.project-reopen-btn:hover{border-color:var(--ink)}
+.project-reopen-btn:disabled{opacity:.6;cursor:wait}
+.lib-actions{display:inline-flex;align-items:center;gap:4px}
+.pin-btn{border:0;background:transparent;cursor:pointer;font-size:14px;line-height:1;padding:4px;border-radius:8px;filter:grayscale(1);opacity:.35;transition:opacity .15s,filter .15s}
+.pin-btn:hover,.pin-btn:focus-visible{opacity:.8}
+.pin-btn.on{filter:none;opacity:1}
+.lib-card.is-pinned{border-color:#f4a3a8;box-shadow:0 4px 14px #d1202612}
+.delta{display:block;margin-top:6px;font-size:11px;font-weight:600}
+.delta.up{color:var(--green)}
+.delta.down{color:var(--r)}
+.delta.flat{color:var(--mut);font-weight:500}
+#performance .metric{cursor:default}
+#performance .metric:hover{border-color:var(--bd);box-shadow:none}
+.check-row{display:flex!important;align-items:center;gap:9px}
+.check-row input{width:auto}
+.myday.summary-3{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+@media(max-width:1000px){.myday.summary-3{grid-template-columns:1fr}}
