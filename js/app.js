@@ -24,6 +24,7 @@
     taskSchedule,
     projectTasks,
     linksFor,
+    scheduleWhen,
     daySets,
     db,
     sync,
@@ -33,7 +34,18 @@
   const $ = (selector) => d.querySelector(selector),
     $$ = (selector) => [...d.querySelectorAll(selector)];
   const WEEKDAY_HEADS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
-  const isOn = (id) => !!$("#" + id)?.classList.contains("on");
+  const IN_PROGRESS = "Đang thực hiện";
+  const PROJECT_STATUSES = ["Chưa bắt đầu", "Đang thực hiện", "Tạm dừng", "Hoàn thành"];
+  const RESOURCE_TYPES = [
+    "Content Direction",
+    "Content Calendar",
+    "Visual Guideline",
+    "Source / Folder",
+    "Báo cáo",
+    "Hub / Công cụ",
+    "Khác",
+  ];
+  const fullDate = (value) => (value ? value.slice(8, 10) + "/" + value.slice(5, 7) + "/" + value.slice(0, 4) : "");
   const storage = {
     get: (key) => {
       try {
@@ -53,42 +65,46 @@
   // Layout: header actions + page routing
   // =====================================================================
   const PAGES = {
-    overview: { title: "Overview", subtitle: "Hôm nay Darcy cần quan tâm điều gì?", render: () => renderOverview() },
-    calendar: { title: "Calendar", subtitle: "Work & personal timeline in one place.", render: () => renderCalendar() },
+    overview: { title: "Tổng quan", subtitle: "Hôm nay Darcy cần quan tâm điều gì?", render: () => renderOverview() },
+    calendar: {
+      title: "Lịch tổng",
+      subtitle: "Task và lịch trình riêng trên cùng một dòng thời gian.",
+      render: () => renderCalendar(),
+    },
     work: {
-      title: "Project & Task",
-      subtitle: "Task cố định, task phát sinh và Projects trong cùng workspace.",
+      title: "Công việc",
+      subtitle: "Task cố định, task phát sinh và Project trong cùng một nơi.",
       section: "tasks",
       render: () => renderWork(),
     },
     performance: {
-      title: "Performance",
-      subtitle: "Theo dõi hiệu quả và rút insight từ dữ liệu thật.",
+      title: "Hiệu quả kênh",
+      subtitle: "Theo dõi số liệu và rút nhận định từ dữ liệu thật.",
       render: () => renderPerformance(),
     },
     library: {
-      title: "Library",
+      title: "Thư viện",
       subtitle: "Tài nguyên làm việc của Darcy, gom gọn và mở nhanh.",
       render: () => renderLibrary(),
     },
     schedule: {
-      title: "Schedule",
+      title: "Lịch trình",
       subtitle: "Lịch trình riêng và các cuộc hẹn của Darcy.",
       render: () => renderSchedule(),
     },
   };
   const SEARCH_BUTTON =
     '<button type="button" class="btn search-btn" data-open-search="" title="Tìm nhanh (⌘K / Ctrl+K)" aria-label="Tìm nhanh">⌕ <span class="search-kbd">⌘K</span></button>';
-  const SYNC_ICON = '<button class="btn" data-refresh="" title="Đồng bộ lại" aria-label="Đồng bộ lại">↻</button>';
-  const SYNC_TEXT = '<button class="btn" data-refresh="">↻ Refresh</button>';
+  const SYNC = '<button class="btn" data-refresh="" title="Đồng bộ lại" aria-label="Đồng bộ lại">↻</button>';
   const LOGOUT = '<button class="btn" data-logout="">Đăng xuất</button>';
   const ADD_TASK = '<button class="btn primary" data-taskadd="">＋ Task</button>';
+  const ADD_SCHEDULE = '<button class="btn soft" data-scheduleadd="">＋ Lịch trình</button>';
   const HEADER_ACTIONS = {
-    calendar: ADD_TASK + '<button class="btn soft" id="scheduleAddTop">＋ Schedule</button>' + SYNC_ICON + LOGOUT,
-    performance: SYNC_TEXT + '<button class="btn primary" id="metricAddTop">＋ Update Data</button>' + LOGOUT,
-    library: SYNC_TEXT + '<button class="btn primary" id="resourceAddTop">＋ Resource</button>' + LOGOUT,
-    schedule: '<button class="btn primary" id="scheduleAddTopOnly">＋ Schedule</button>' + SYNC_ICON + LOGOUT,
-    default: ADD_TASK + '<button class="btn soft" data-projectadd="">＋ Project</button>' + SYNC_ICON + LOGOUT,
+    calendar: ADD_TASK + ADD_SCHEDULE + SYNC + LOGOUT,
+    performance: '<button class="btn primary" data-metricadd="">＋ Cập nhật số liệu</button>' + SYNC + LOGOUT,
+    library: '<button class="btn primary" data-resourceadd="">＋ Tài liệu</button>' + SYNC + LOGOUT,
+    schedule: '<button class="btn primary" data-scheduleadd="">＋ Lịch trình</button>' + SYNC + LOGOUT,
+    default: ADD_TASK + '<button class="btn soft" data-projectadd="">＋ Project</button>' + SYNC + LOGOUT,
   };
 
   function renderHeader(page) {
@@ -96,18 +112,15 @@
     $("#subtitle").textContent = PAGES[page].subtitle;
     const actions = $("#topActions");
     actions.innerHTML = SEARCH_BUTTON + (HEADER_ACTIONS[page] || HEADER_ACTIONS.default);
-    actions.querySelector("[data-open-search]").onclick = openSearch;
-    actions.querySelector("[data-taskadd]")?.addEventListener("click", () => openForm("tasks"));
-    actions.querySelector("[data-projectadd]")?.addEventListener("click", () => openForm("projects"));
-    actions.querySelector("[data-refresh]").onclick = sync;
-    actions.querySelector("[data-logout]").onclick = auth.signOut;
-    $("#metricAddTop")?.addEventListener("click", () => metricForm());
-    $("#resourceAddTop")?.addEventListener("click", () => resourceForm());
-    $("#scheduleAddTop")?.addEventListener("click", async () => {
-      await show("schedule");
-      scheduleForm();
-    });
-    $("#scheduleAddTopOnly")?.addEventListener("click", () => scheduleForm());
+    const on = (selector, handler) => actions.querySelector(selector)?.addEventListener("click", handler);
+    on("[data-open-search]", openSearch);
+    on("[data-taskadd]", () => openForm("tasks"));
+    on("[data-projectadd]", () => openForm("projects"));
+    on("[data-scheduleadd]", () => openScheduleSheet());
+    on("[data-metricadd]", () => metricForm());
+    on("[data-resourceadd]", () => resourceForm());
+    on("[data-refresh]", sync);
+    on("[data-logout]", auth.signOut);
   }
   const activePage = () => $(".nav button.on")?.dataset.space || "overview";
 
@@ -122,7 +135,7 @@
   $$(".nav button").forEach((button) => (button.onclick = () => show(button.dataset.space)));
 
   // =====================================================================
-  // Shared pieces: link chips, quick-done tick, task card
+  // Shared pieces: link chips, tick buttons, task & schedule cards
   // =====================================================================
   const linkChips = (table, id) =>
     linksFor(table, id)
@@ -137,32 +150,42 @@
   };
   const tickButton = (task) =>
     `<button type="button" class="quick-done" data-quick-done="${task.id}" title="Đánh dấu hoàn thành" aria-label="Đánh dấu hoàn thành ${E(task.name)}">✓</button>`;
+  const scheduleTick = (item) =>
+    `<button type="button" class="quick-done" data-quick-schedule="${item.id}" title="Đánh dấu lịch trình đã xong" aria-label="Đánh dấu đã xong ${E(item.title)}">✓</button>`;
   const deadlineSpan = (deadline) =>
     `<span class="${daysFromToday(deadline) < 0 ? "danger" : ""}">${deadlineLabel(deadline)}</span>`;
 
-  /** Task card used on Overview and in Upcoming Deadlines. */
+  /** Task card used on Overview and in the calendar's upcoming deadlines. */
   function taskItem(task, { tick = false, overdue = false } = {}) {
     const classes = "workitem" + (tick ? " has-tick" : "") + (overdue ? " is-overdue" : "");
-    return `<div class="${classes}" data-edit="tasks" data-id="${task.id}">${tick ? tickButton(task) : ""}<b>${E(task.name)}</b><div class="small">${taskSchedule(task)}${task.deadline ? ` · ${deadlineSpan(task.deadline)}` : ""} · ${E(task.status || "")}</div>${linksBlock("tasks", task.id)}</div>`;
+    return `<div class="${classes}" data-edit="tasks" data-id="${task.id}">${tick ? tickButton(task) : ""}<b>${E(task.name)}</b><div class="small">${taskSchedule(task)}${task.deadline ? ` · ${deadlineSpan(task.deadline)}` : ""}${taskStatus(task) ? " · " + E(taskStatus(task)) : ""}</div>${linksBlock("tasks", task.id)}</div>`;
   }
+  /** Schedule card with the same tick / click-to-edit behaviour as tasks. */
+  function scheduleItem(item, { showDate = false } = {}) {
+    const overdue = !item.completed && item.event_date < today(),
+      classes =
+        "workitem schedule-item" + (item.completed ? " is-complete" : " has-tick") + (overdue ? " is-overdue" : "");
+    const when = showDate ? scheduleWhen(item) : item.start_time ? item.start_time.slice(0, 5) : "Cả ngày";
+    return `<div class="${classes}" data-schedule-open="${item.id}">${item.completed ? "" : scheduleTick(item)}<b>${item.completed ? "✓ " : ""}${E(item.title)}</b><div class="small">${when}${item.location ? " · " + E(item.location) : ""}</div></div>`;
+  }
+  /** Open (not completed) schedules from today up to `days` ahead, plus overdue ones. */
+  const upcomingSchedules = (days) =>
+    state.schedules.filter((item) => !item.completed && item.event_date && item.event_date <= addDays(today(), days));
 
   // =====================================================================
   // Overview
   // =====================================================================
-  async function renderOverview() {
+  function renderOverview() {
     const sets = daySets(),
       projects = state.projects,
       activeProjects = projects.filter((project) => !isDone(project.status)),
       hour = new Date().getHours(),
       greet =
         hour < 11 ? "Chào buổi sáng" : hour < 14 ? "Chào buổi trưa" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
-    let schedules = [];
-    try {
-      schedules = (await db.select("personal_schedule"))
+    const schedules = state.schedules
         .filter((item) => item.event_date === today())
-        .sort((a, b) => String(a.start_time || "99").localeCompare(String(b.start_time || "99")));
-    } catch (error) {}
-    const overIds = new Set(sets.over.map((task) => task.id)),
+        .sort((a, b) => String(a.start_time || "99").localeCompare(String(b.start_time || "99"))),
+      overIds = new Set(sets.over.map((task) => task.id)),
       focus = [...sets.over, ...sets.today.filter((task) => !overIds.has(task.id))],
       openSchedules = schedules.filter((item) => !item.completed);
     const card = (icon, title, kind, desc) => {
@@ -178,15 +201,12 @@
     const scheduleItems =
       schedules
         .slice(0, 5)
-        .map(
-          (item) =>
-            `<div class="workitem ${item.completed ? "is-complete" : ""}" data-overview-schedule="${item.id}" style="${item.completed ? "opacity:.55" : ""}"><b>${item.completed ? "✓ " : ""}${E(item.title)}</b><div class="small">${item.start_time ? item.start_time.slice(0, 5) + " · " : ""}${E(item.location || "")}</div></div>`,
-        )
+        .map((item) => scheduleItem(item))
         .join("") || '<div class="empty" style="margin-top:10px">Không có lịch hôm nay</div>';
     $("#overview").innerHTML =
       `<div class="card"><b>${greet}, Darcy ✦</b><div class="small">Hôm nay có <b>${sets.today.length}</b> việc cần làm${sets.due.length ? `, trong đó <b>${sets.due.length}</b> việc tới hạn` : ""}${sets.over.length ? ` · <b class="danger">${sets.over.length}</b> việc quá hạn` : ""}${openSchedules.length ? ` · <b>${openSchedules.length}</b> lịch hẹn` : ""}.</div></div>` +
-      `<div class="report-grid">${tile("Hôm nay", sets.today.length, "Việc cần làm")}${tile("Tới hạn hôm nay", sets.due.length, "Deadline hôm nay")}${tile("Quá hạn", sets.over.length, "Cần ưu tiên", sets.over.length ? "danger" : "")}${tile("Projects", activeProjects.length, `Đang chạy / ${projects.length} tổng`)}</div>` +
-      `<h2>My Day</h2><div class="myday">${card("↻", "Task cố định", "routine", "Việc lặp lại theo tuần, đến lịch hôm nay")}${card("⚡", "Task phát sinh", "ad_hoc", "Việc phát sinh cần xử lý")}${card("▣", "Theo Project", "project", "Task project đang trong thời hạn")}<div class="panel"><div class="panel-head"><b>◷ Lịch trình riêng</b><span class="pill">${openSchedules.length}</span></div><div class="small">Cuộc hẹn và lịch cá nhân hôm nay</div>${scheduleItems}</div></div>`;
+      `<div class="report-grid">${tile("Hôm nay", sets.today.length, "Việc cần làm")}${tile("Tới hạn hôm nay", sets.due.length, "Deadline hôm nay")}${tile("Quá hạn", sets.over.length, "Cần ưu tiên", sets.over.length ? "danger" : "")}${tile("Project", activeProjects.length, `Đang chạy / ${projects.length} tổng`)}</div>` +
+      `<h2>Ngày của Darcy</h2><div class="myday">${card("↻", "Task cố định", "routine", "Việc lặp lại theo tuần, đến lịch hôm nay")}${card("⚡", "Task phát sinh", "ad_hoc", "Việc phát sinh cần xử lý")}${card("▣", "Theo Project", "project", "Task project đang trong thời hạn")}<div class="panel"><div class="panel-head"><b>◷ Lịch trình riêng</b><span class="pill">${openSchedules.length}</span></div><div class="small">Cuộc hẹn và lịch cá nhân hôm nay</div>${scheduleItems}${upcomingSchedules(7).length > openSchedules.length ? '<button type="button" class="btn more-link" data-open-drill="schedules">Xem lịch 7 ngày tới →</button>' : ""}</div></div>`;
     $$("#overview [data-open-drill]").forEach((button) => (button.onclick = () => openDrill(button.dataset.openDrill)));
   }
   // Overview tiles open the summary sheet (click or Enter/Space).
@@ -211,7 +231,8 @@
     ["due", "Tới hạn hôm nay"],
     ["over", "Quá hạn"],
     ["soon", "Sắp tới 7 ngày"],
-    ["projects", "Projects"],
+    ["schedules", "Lịch trình"],
+    ["projects", "Project"],
   ];
   function openDrill(key) {
     openSheet("Tổng hợp công việc", "", true);
@@ -220,7 +241,7 @@
   function drawDrill(key) {
     const box = $(".darcy-sheet-bg .sheet-body");
     if (!box) return;
-    const data = { ...daySets(), projects: state.projects },
+    const data = { ...daySets(), schedules: upcomingSchedules(7), projects: state.projects },
       projectName = (id) => state.projects.find((project) => project.id === id)?.name || "";
     const tabs = `<div class="seg drill-tabs" role="tablist">${DRILL_TABS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${k === key}" class="${k === key ? "on" : ""}" data-drill-tab="${k}">${label} <span class="pill">${data[k].length}</span></button>`).join("")}</div>`;
     let table;
@@ -234,6 +255,17 @@
             })
             .join("")}</tbody></table>`
         : '<div class="empty">Chưa có project.</div>';
+    } else if (key === "schedules") {
+      table = data.schedules.length
+        ? `<table class="drill-table"><thead><tr><th></th><th>Lịch trình</th><th>Thời gian</th><th>Tình trạng</th></tr></thead><tbody>${data.schedules
+            .map((item) => {
+              const n = daysFromToday(item.event_date),
+                status =
+                  n < 0 ? `<span class="danger">Đã qua ${-n} ngày</span>` : n === 0 ? "Hôm nay" : `Còn ${n} ngày`;
+              return `<tr class="row" data-schedule-open="${item.id}"><td>${scheduleTick(item)}</td><td><b>${E(item.title)}</b><div class="small">${E(item.location || "")}</div></td><td>${scheduleWhen(item)}</td><td>${status}</td></tr>`;
+            })
+            .join("")}</tbody></table>`
+        : '<div class="empty">Không có lịch trình nào trong 7 ngày tới 🎉</div>';
     } else {
       const rows = data[key];
       const kindText = (task) =>
@@ -258,14 +290,17 @@
         }),
     );
   }
+  const redrawDrill = () => {
+    const drill = $(".darcy-sheet-bg [data-drill]");
+    if (drill) drawDrill(drill.dataset.drill);
+  };
 
   // =====================================================================
   // Calendar timeline
   // =====================================================================
   let calMode = storage.get("darcyCalendarMode") || "month",
     weekOffset = 0,
-    timelineMonth = today().slice(0, 7),
-    calendarSchedules = [];
+    timelineMonth = today().slice(0, 7);
 
   /** Start/end of a task on the timeline (routine tasks repeat inside `weekStart`). */
   function taskInterval(task, weekStart) {
@@ -284,7 +319,7 @@
     if (end < start) [start, end] = [end, start];
     return { start, end, status: task.status || "" };
   }
-  function weekItems(weekStart, schedules) {
+  function weekItems(weekStart) {
     const weekEnd = addDays(weekStart, 6),
       now = today(),
       items = [];
@@ -305,7 +340,7 @@
         label: task.name,
       });
     });
-    schedules
+    state.schedules
       .filter((item) => item.event_date >= weekStart && item.event_date <= weekEnd)
       .forEach((item) => {
         const complete = Boolean(item.completed);
@@ -319,7 +354,7 @@
           complete,
           overdue: !complete && item.event_date < now,
           category: "schedule",
-          label: item.title,
+          label: (item.start_time ? item.start_time.slice(0, 5) + " " : "") + item.title,
         });
       });
     return items.sort(
@@ -342,20 +377,19 @@
             : item.fullStart === item.fullEnd
               ? ""
               : "→ ",
-      title =
-        item.kind === "task"
-          ? `${item.label} · ${dd(item.fullStart)} → ${dd(item.fullEnd)}`
-          : `${item.label} · ${dd(item.start)}`,
-      target =
-        item.kind === "task" ? `data-edit="tasks" data-id="${item.task.id}"` : `data-schedule-id="${item.schedule.id}"`,
-      tick = item.kind === "task" && !item.complete ? tickButton(item.task) : "";
+      task = item.kind === "task",
+      title = task
+        ? `${item.label} · ${dd(item.fullStart)} → ${dd(item.fullEnd)}`
+        : `${item.label} · ${dd(item.start)}`,
+      target = task ? `data-edit="tasks" data-id="${item.task.id}"` : `data-schedule-open="${item.schedule.id}"`,
+      tick = item.complete ? "" : task ? tickButton(item.task) : scheduleTick(item.schedule);
     return `<div class="timeline-segment cat-${item.category} ${status}${continuity}" style="grid-column:${startCol}/span ${span};grid-row:${lane}" ${target} title="${E(title)}"><span class="timeline-mark">${mark}</span>${E(item.label)}${tick}</div>`;
   }
   /** One week row; non-overlapping items share a lane to save vertical space. */
-  function weekRowHtml(weekStart, schedules, month, weekView = false) {
+  function weekRowHtml(weekStart, month, weekView = false) {
     const dates = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
       laneEnds = [],
-      placed = weekItems(weekStart, schedules).map((item) => {
+      placed = weekItems(weekStart).map((item) => {
         let lane = laneEnds.findIndex((end) => end < item.start);
         if (lane < 0) {
           lane = laneEnds.length;
@@ -381,13 +415,13 @@
       weeks = [];
     for (let cursor = mondayOf(month + "-01"); cursor <= end; cursor = addDays(cursor, 7)) weeks.push(cursor);
     $("#cal58").innerHTML =
-      `<div class="timeline-calendar">${weekdayHeader}${weeks.map((week) => weekRowHtml(week, calendarSchedules, month)).join("")}</div>`;
+      `<div class="timeline-calendar">${weekdayHeader}${weeks.map((week) => weekRowHtml(week, month)).join("")}</div>`;
   }
   function drawWeek() {
     const base = addDays(thisWeek(), weekOffset * 7);
     $("#monthPick58").style.display = "none";
     $("#cal58").innerHTML =
-      `<div class="timeline-calendar timeline-week-view">${weekdayHeader}${weekRowHtml(base, calendarSchedules, base.slice(0, 7), true)}</div>`;
+      `<div class="timeline-calendar timeline-week-view">${weekdayHeader}${weekRowHtml(base, base.slice(0, 7), true)}</div>`;
   }
   function shiftCalendar(step) {
     if (calMode === "week") {
@@ -413,18 +447,14 @@
       upcoming = state.tasks
         .filter((task) => task.deadline && task.deadline >= now && !isDone(task.status))
         .sort((a, b) => a.deadline.localeCompare(b.deadline))
-        .slice(0, 5);
+        .slice(0, 5),
+      nextSchedules = state.schedules.filter((item) => !item.completed && item.event_date >= now).slice(0, 5);
     $("#calSummary58").innerHTML =
-      `<div class="myday subcard"><div class="panel"><b>This month / week</b><div class="report-grid" style="grid-template-columns:repeat(3,1fr)"><div><b>${state.tasks.length}</b><div class="small">Tasks</div></div><div><b>${overdue.length}</b><div class="small">Overdue</div></div><div><b>${calendarSchedules.filter((item) => !item.completed).length}</b><div class="small">Schedules</div></div></div></div><div class="panel"><b>Upcoming Deadlines</b>${upcoming.map((task) => taskItem(task)).join("") || '<div class="small" style="margin-top:10px">Chưa có deadline sắp tới.</div>'}</div></div>`;
+      `<div class="myday subcard summary-3"><div class="panel"><b>Tổng quan nhanh</b><div class="report-grid" style="grid-template-columns:repeat(3,1fr)"><div><b>${state.tasks.length}</b><div class="small">Task</div></div><div><b>${overdue.length}</b><div class="small">Quá hạn</div></div><div><b>${state.schedules.filter((item) => !item.completed).length}</b><div class="small">Lịch trình chưa xong</div></div></div></div><div class="panel"><b>Deadline sắp tới</b>${upcoming.map((task) => taskItem(task)).join("") || '<div class="small" style="margin-top:10px">Chưa có deadline sắp tới.</div>'}</div><div class="panel"><b>Lịch trình sắp tới</b>${nextSchedules.map((item) => scheduleItem(item, { showDate: true })).join("") || '<div class="small" style="margin-top:10px">Chưa có lịch trình sắp tới.</div>'}</div></div>`;
   }
-  async function renderCalendar() {
-    try {
-      calendarSchedules = await db.select("personal_schedule");
-    } catch (error) {
-      calendarSchedules = [];
-    }
+  function renderCalendar() {
     $("#calendar").innerHTML =
-      `<div class="card"><div class="head"><div><b>Calendar Timeline</b><div class="small">Task chạy liên tục từ ngày bắt đầu đến deadline; click vào bất kỳ đoạn nào để chỉnh sửa.</div></div></div><div class="contextbar" style="margin-top:12px"><div class="seg"><button id="month58" class="${calMode === "month" ? "on" : ""}">Month</button><button id="week58" class="${calMode === "week" ? "on" : ""}">Week</button></div><button class="btn" id="prev58">‹</button><input type="month" id="monthPick58" value="${timelineMonth}"><button class="btn" id="next58">›</button><button class="btn" id="today58">Today</button></div><div id="calSummary58"></div><div class="timeline-legend"><span><i class="legend-dot legend-routine"></i>Task cố định</span><span><i class="legend-dot legend-project"></i>Project</span><span><i class="legend-dot legend-adhoc"></i>Task phát sinh</span><span><i class="legend-dot legend-schedule"></i>Schedule</span><span class="status-legend">✓ Hoàn thành: mờ</span><span>⚠ Quá hạn: viền đỏ</span></div><div id="cal58"></div></div>`;
+      `<div class="card"><div class="head"><div><b>Dòng thời gian</b><div class="small">Task chạy liên tục từ ngày bắt đầu đến deadline. Bấm vào task hoặc lịch trình để chỉnh sửa, bấm ✓ để đánh dấu xong.</div></div></div><div class="contextbar" style="margin-top:12px"><div class="seg"><button id="month58" class="${calMode === "month" ? "on" : ""}">Tháng</button><button id="week58" class="${calMode === "week" ? "on" : ""}">Tuần</button></div><button class="btn" id="prev58" aria-label="Trước">‹</button><input type="month" id="monthPick58" value="${timelineMonth}"><button class="btn" id="next58" aria-label="Sau">›</button><button class="btn" id="today58">Hôm nay</button></div><div id="calSummary58"></div><div class="timeline-legend"><span><i class="legend-dot legend-routine"></i>Task cố định</span><span><i class="legend-dot legend-project"></i>Project</span><span><i class="legend-dot legend-adhoc"></i>Task phát sinh</span><span><i class="legend-dot legend-schedule"></i>Lịch trình</span><span class="status-legend">✓ Hoàn thành: mờ</span><span>⚠ Quá hạn: viền đỏ</span></div><div id="cal58"></div></div>`;
     $("#month58").onclick = () => setCalendarMode("month");
     $("#week58").onclick = () => setCalendarMode("week");
     $("#today58").onclick = () => {
@@ -445,10 +475,9 @@
   // =====================================================================
   function renderProjectCards() {
     const year = today().slice(0, 4),
-      fullDate = (value) =>
+      shortDate = (value) =>
         value ? dd(value) + (value.slice(0, 4) !== year ? "/" + value.slice(0, 4) : "") : "Chưa đặt hạn";
-    const box = $("#projectCards58");
-    box.innerHTML =
+    $("#projectCards58").innerHTML =
       state.projects
         .map((project) => {
           const list = projectTasks(project.id),
@@ -461,31 +490,38 @@
             soon = !!project.deadline && !projectDone && !allDone && !late && daysFromToday(project.deadline) <= 7,
             stateClass = projectDone || allDone ? "is-done" : late ? "is-late" : soon ? "is-soon" : "",
             hint = projectDone
-              ? '<div class="progress-hint">✓ Project đã hoàn thành</div>'
+              ? `<div class="progress-hint progress-hint-row"><span>✓ Project đã hoàn thành</span><button type="button" class="btn project-reopen-btn" data-preopen="${project.id}" title="Chuyển lại trạng thái Đang thực hiện">↺ Mở lại</button></div>`
               : allDone
                 ? `<div class="progress-hint progress-hint-row"><span>✓ Đã xong toàn bộ task</span><button type="button" class="btn project-done-btn" data-pdone="${project.id}">Đánh dấu hoàn thành</button></div>`
                 : project.deadline
                   ? `<div class="progress-hint">${late ? "⚠ " : ""}${deadlineLabel(project.deadline)}</div>`
                   : "";
-          return `<div class="card project-card ${stateClass}" data-edit="projects" data-id="${project.id}"><span class="tag">${E(project.project_group || "Project")}</span><h3>${E(project.name)}</h3><div class="small">${project.start_date ? fullDate(project.start_date) + " → " : ""}${fullDate(project.deadline)} · ${E(project.status || "")}</div><div class="progress" role="progressbar" aria-label="Tiến độ ${E(project.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div><div class="progress-meta"><span>${count ? `<b>${finished}/${count}</b> task xong` : "Chưa có task con"}</span><b>${pct}%</b></div>${hint}${linksBlock("projects", project.id)}</div>`;
+          return `<div class="card project-card ${stateClass}" data-edit="projects" data-id="${project.id}"><span class="tag">${E(project.project_group || "Project")}</span><h3>${E(project.name)}</h3><div class="small">${project.start_date ? shortDate(project.start_date) + " → " : ""}${shortDate(project.deadline)} · ${E(project.status || "")}</div><div class="progress" role="progressbar" aria-label="Tiến độ ${E(project.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div><div class="progress-meta"><span>${count ? `<b>${finished}/${count}</b> task xong` : "Chưa có task con"}</span><b>${pct}%</b></div>${hint}${linksBlock("projects", project.id)}</div>`;
         })
         .join("") || '<div class="empty">Chưa có project.</div>';
-    box.querySelectorAll("[data-pdone]").forEach(
-      (button) =>
-        (button.onclick = async (event) => {
-          event.stopPropagation();
-          button.disabled = true;
-          button.textContent = "Đang lưu…";
-          try {
-            await db.save("projects", { status: DONE_STATUS }, button.dataset.pdone);
-            await sync();
-          } catch (error) {
-            console.error(error);
-            button.disabled = false;
-            button.textContent = "⚠ Lỗi, thử lại";
-          }
-        }),
-    );
+  }
+  /** Change a project's status from its card, with undo. */
+  async function setProjectStatus(id, status, button) {
+    const project = state.projects.find((row) => row.id === id);
+    if (!project) return;
+    const previous = project.status || null;
+    button.disabled = true;
+    button.textContent = "Đang lưu…";
+    try {
+      await db.save("projects", { status }, id);
+      await sync();
+      toast(
+        isDone(status) ? `Đã hoàn thành project “${project.name}”` : `Đã mở lại project “${project.name}”`,
+        async () => {
+          await db.save("projects", { status: previous }, id);
+          await sync();
+        },
+      );
+    } catch (error) {
+      console.error(error);
+      button.disabled = false;
+      button.textContent = "⚠ Lỗi, thử lại";
+    }
   }
   function renderTaskTable() {
     const query = $("#taskSearch").value.toLowerCase(),
@@ -521,11 +557,14 @@
   // Task / project form (modal)
   // =====================================================================
   const LINK_TYPES = ["Google Docs Content", "Canva Visual", "Drive/Source", "Facebook/TikTok Post", "Website", "Khác"];
-  let formCtx = null, // { table, id, record }
+  let formCtx = null, // { table, id }
     editingLinks = [];
 
+  /** <option>s for `values`; keeps an unknown current value selectable. */
   const options = (values, selected) =>
-    values.map((value) => `<option ${selected === value ? "selected" : ""}>${value}</option>`).join("");
+    (selected && !values.includes(selected) ? [selected, ...values] : values)
+      .map((value) => `<option ${selected === value ? "selected" : ""}>${E(value)}</option>`)
+      .join("");
   const projectOptions = (selected) =>
     '<option value="">— Không thuộc project —</option>' +
     state.projects
@@ -552,12 +591,12 @@
       `<label>Giờ bắt đầu<input type="time" data-field="start_time" value="${E((rec.start_time || "").slice(0, 5))}"></label><label>Ưu tiên<input data-field="priority" value="${E(rec.priority || "")}"></label>` +
       (routine
         ? ""
-        : `<label>Trạng thái<select data-field="status">${options(TASK_STATUSES, rec.status)}</select></label>`) +
+        : `<label>Trạng thái<select data-field="status">${options(TASK_STATUSES, rec.status || TASK_STATUSES[0])}</select></label>`) +
       `<label class="full">Cần làm gì?<textarea data-field="description">${E(rec.description || "")}</textarea></label><label class="full">Cách làm / bước xử lý<textarea data-field="how_to">${E(rec.how_to || "")}</textarea></label><label class="full">Ghi chú<textarea data-field="notes">${E(rec.notes || "")}</textarea></label>`
     );
   }
   function projectFields(rec) {
-    return `<label>Project ID<input data-field="project_code" value="${E(rec.project_code || "")}"></label><label>Nhóm Project<input data-field="project_group" value="${E(rec.project_group || "")}"></label><label class="full">Tên Project<input data-field="name" value="${E(rec.name || "")}"></label><label>Ngày bắt đầu<input type="date" data-field="start_date" value="${E(rec.start_date || "")}"></label><label>Deadline tổng<input type="date" data-field="deadline" value="${E(rec.deadline || "")}"></label><label>Trạng thái<input data-field="status" value="${E(rec.status || "")}"></label><label>Ưu tiên<input data-field="priority" value="${E(rec.priority || "")}"></label><label class="full">Mục tiêu / Phạm vi<textarea data-field="scope">${E(rec.scope || "")}</textarea></label>`;
+    return `<label>Mã project<input data-field="project_code" value="${E(rec.project_code || "")}"></label><label>Nhóm project<input data-field="project_group" value="${E(rec.project_group || "")}"></label><label class="full">Tên project<input data-field="name" value="${E(rec.name || "")}"></label><label>Ngày bắt đầu<input type="date" data-field="start_date" value="${E(rec.start_date || "")}"></label><label>Deadline tổng<input type="date" data-field="deadline" value="${E(rec.deadline || "")}"></label><label>Trạng thái<select data-field="status">${options(PROJECT_STATUSES, rec.status || PROJECT_STATUSES[0])}</select></label><label>Ưu tiên<input data-field="priority" value="${E(rec.priority || "")}"></label><label class="full">Mục tiêu / Phạm vi<textarea data-field="scope">${E(rec.scope || "")}</textarea></label>`;
   }
   /** Current values of the form fields (empty → null, weekdays → numbers). */
   function readFields() {
@@ -740,21 +779,29 @@
   // Library
   // =====================================================================
   let libs = [];
+  /** Merge spelling variants ("KHÁC", "khác") into the canonical type name. */
+  const resourceType = (value) =>
+    RESOURCE_TYPES.find(
+      (type) =>
+        type.toLowerCase() ===
+        String(value || "")
+          .trim()
+          .toLowerCase(),
+    ) ||
+    String(value || "").trim() ||
+    "Khác";
   async function renderLibrary() {
     try {
       libs = await db.select("library_resources");
     } catch (error) {
       libs = [];
     }
-    const distinct = (field) => [...new Set(libs.map((row) => row[field]).filter(Boolean))];
+    const channels = [...new Set(libs.map((row) => row.channel).filter(Boolean))],
+      types = [...new Set(libs.map((row) => resourceType(row.resource_type)))].sort(
+        (a, b) => RESOURCE_TYPES.indexOf(a) - RESOURCE_TYPES.indexOf(b),
+      );
     $("#library").innerHTML =
-      `<div class="card"><div class="head"><div><b>Resource Library</b><div class="small">Tìm nhanh Content Direction, Calendar, Guideline và source theo từng kênh.</div></div></div><div class="contextbar" style="margin-top:14px"><input id="libQ58" placeholder="Tìm tài liệu..."><select id="libCh58"><option value="">Tất cả Channel</option>${distinct(
-        "channel",
-      )
-        .map((x) => `<option>${E(x)}</option>`)
-        .join("")}</select><select id="libTy58"><option value="">Tất cả loại</option>${distinct("resource_type")
-        .map((x) => `<option>${E(x)}</option>`)
-        .join("")}</select></div><div id="libForm58"></div><div id="libGrid58" class="lib-grid"></div></div>`;
+      `<div class="card"><div class="head"><div><b>Thư viện tài liệu</b><div class="small">Tìm nhanh định hướng nội dung, lịch đăng, guideline, báo cáo và source theo từng kênh. Bấm 📌 để ghim tài liệu hay dùng lên đầu.</div></div></div><div class="contextbar" style="margin-top:14px"><input id="libQ58" placeholder="Tìm tài liệu..."><select id="libCh58"><option value="">Tất cả kênh</option>${channels.map((x) => `<option>${E(x)}</option>`).join("")}</select><select id="libTy58"><option value="">Tất cả loại</option>${types.map((x) => `<option>${E(x)}</option>`).join("")}</select></div><div id="libForm58"></div><div id="libGrid58" class="lib-grid"></div></div>`;
     $("#libQ58").oninput = drawLibrary;
     $("#libCh58").onchange = drawLibrary;
     $("#libTy58").onchange = drawLibrary;
@@ -764,37 +811,63 @@
     const query = $("#libQ58").value.toLowerCase(),
       channel = $("#libCh58").value,
       type = $("#libTy58").value,
-      rows = libs.filter(
-        (row) =>
-          (!query || JSON.stringify(row).toLowerCase().includes(query)) &&
-          (!channel || row.channel === channel) &&
-          (!type || row.resource_type === type),
-      );
+      rows = libs
+        .filter(
+          (row) =>
+            (!query || JSON.stringify(row).toLowerCase().includes(query)) &&
+            (!channel || row.channel === channel) &&
+            (!type || resourceType(row.resource_type) === type),
+        )
+        .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
     $("#libGrid58").innerHTML =
       rows
-        .map(
-          (row) =>
-            `<div class="lib-card"><div class="panel-head"><span class="type">${E(row.resource_type || "Resource")}</span><button class="ellipsis" data-libedit="${row.id}" title="Chỉnh sửa">•••</button></div><h3>${E(row.name)}</h3><span class="pill" style="width:max-content">${E(row.channel || "Chung")}</span><p class="small lib-desc">${E(row.notes || "")}</p><div class="lib-foot">${row.url ? `<a class="linkish" target="_blank" href="${E(row.url)}">Mở tài liệu ↗</a>` : "<span></span>"}<span class="small">${row.updated_at ? dd(row.updated_at.slice(0, 10)) : ""}</span></div></div>`,
-        )
-        .join("") || '<div class="empty">Không có tài nguyên phù hợp.</div>';
+        .map((row) => {
+          const updated = row.updated_at ? fullDate(row.updated_at.slice(0, 10)) : "";
+          return `<div class="lib-card ${row.pinned ? "is-pinned" : ""}"><div class="panel-head"><span class="type">${E(resourceType(row.resource_type))}</span><span class="lib-actions"><button type="button" class="pin-btn ${row.pinned ? "on" : ""}" data-pin="${row.id}" title="${row.pinned ? "Bỏ ghim" : "Ghim lên đầu"}" aria-label="${row.pinned ? "Bỏ ghim" : "Ghim"} ${E(row.name)}" aria-pressed="${!!row.pinned}">📌</button><button class="ellipsis" data-libedit="${row.id}" title="Chỉnh sửa">•••</button></span></div><h3>${E(row.name)}</h3><span class="pill" style="width:max-content">${E(row.channel || "Chung")}</span><p class="small lib-desc">${E(row.notes || "")}</p><div class="lib-foot">${row.url ? `<a class="linkish" target="_blank" rel="noopener" href="${E(row.url)}">Mở tài liệu ↗</a>` : "<span></span>"}<span class="small">${updated ? "Cập nhật " + updated : ""}</span></div></div>`;
+        })
+        .join("") || '<div class="empty">Không có tài liệu phù hợp.</div>';
     $$("[data-libedit]").forEach(
       (button) => (button.onclick = () => resourceForm(libs.find((row) => row.id === button.dataset.libedit))),
     );
   }
+  async function togglePin(id, button) {
+    const row = libs.find((item) => item.id === id);
+    if (!row) return;
+    button.disabled = true;
+    try {
+      await db.save("library_resources", { pinned: !row.pinned }, id);
+      await renderLibrary();
+      toast(row.pinned ? `Đã bỏ ghim “${row.name}”` : `Đã ghim “${row.name}” lên đầu`);
+    } catch (error) {
+      console.error(error);
+      button.disabled = false;
+      toast("⚠ Không ghim được, thử lại nhé");
+    }
+  }
   function resourceForm(r = {}) {
     $("#libForm58").innerHTML =
-      `<form id="rf58" class="form58"><label>Tên tài nguyên<input name="name" required value="${E(r.name || "")}"></label><label>Fanpage / Channel<input name="channel" value="${E(r.channel || "")}"></label><label>Loại tài liệu<select name="resource_type">${options(["Content Direction", "Content Calendar", "Visual Guideline", "Source / Folder", "Khác"], r.resource_type)}</select></label><label>Link<input name="url" type="url" value="${E(r.url || "")}"></label><label class="full">Ghi chú<textarea name="notes">${E(r.notes || "")}</textarea></label><div class="formactions">${r.id ? '<button type="button" class="btn" id="rfDel">Xóa</button>' : ""}<button type="button" class="btn" id="rfCancel">Hủy</button><button class="btn primary">Lưu</button></div></form>`;
+      `<form id="rf58" class="form58"><label>Tên tài liệu<input name="name" required value="${E(r.name || "")}"></label><label>Fanpage / Kênh<input name="channel" value="${E(r.channel || "")}"></label><label>Loại tài liệu<select name="resource_type">${options(RESOURCE_TYPES, r.id ? resourceType(r.resource_type) : RESOURCE_TYPES[0])}</select></label><label>Link<input name="url" type="url" value="${E(r.url || "")}"></label><label class="full">Ghi chú<textarea name="notes">${E(r.notes || "")}</textarea></label><label class="full check-row"><input type="checkbox" name="pinned" ${r.pinned ? "checked" : ""}><span>Ghim lên đầu thư viện</span></label><div class="formactions">${r.id ? '<button type="button" class="btn" id="rfDel">Xóa</button>' : ""}<button type="button" class="btn" id="rfCancel">Hủy</button><button class="btn primary">Lưu</button></div></form>`;
     const form = $("#rf58");
+    form.scrollIntoView({ behavior: "smooth", block: "nearest" });
     $("#rfCancel").onclick = () => ($("#libForm58").innerHTML = "");
     $("#rfDel")?.addEventListener("click", async () => {
-      if (!confirm("Xóa tài nguyên này?")) return;
+      if (!confirm("Xóa tài liệu này?")) return;
       await db.remove("library_resources", r.id);
       renderLibrary();
     });
     form.onsubmit = async (event) => {
       event.preventDefault();
-      await db.save("library_resources", Object.fromEntries(new FormData(form)), r.id);
-      renderLibrary();
+      const payload = Object.fromEntries(new FormData(form));
+      payload.pinned = form.elements.pinned.checked;
+      payload.updated_at = new Date().toISOString();
+      try {
+        await db.save("library_resources", payload, r.id);
+        await renderLibrary();
+        toast(r.id ? "Đã lưu tài liệu" : "Đã thêm tài liệu");
+      } catch (error) {
+        console.error(error);
+        toast("⚠ Lưu không thành công: " + error.message);
+      }
     };
   }
 
@@ -808,6 +881,7 @@
   const engagementOf = (row) =>
     Number(perfType === "facebook" ? row.engagements || 0 : (row.likes || 0) + (row.comments || 0) + (row.shares || 0));
   const num = (value) => value.toLocaleString("vi-VN");
+  const periodKey = (row) => row.period_start || row.week_label || "";
 
   async function renderPerformance() {
     try {
@@ -817,7 +891,7 @@
     }
     const names = [...new Set(perfRows.map(channelOf).filter(Boolean))];
     $("#performance").innerHTML =
-      `<div class="card"><div class="head"><div><b>Performance Report</b><div class="small">KPI → Trend → Channel Performance → Darcy's Insights.</div></div></div><div class="contextbar" style="margin-top:14px"><div class="seg"><button id="fb58" class="${perfType === "facebook" ? "on" : ""}">Facebook</button><button id="tt58" class="${perfType === "tiktok" ? "on" : ""}">TikTok</button></div><select id="perfCh58"><option value="">Tất cả Channel</option>${names.map((x) => `<option>${E(x)}</option>`).join("")}</select><select id="perfRange58"><option value="0">Tất cả kỳ</option><option value="4">4 kỳ gần nhất</option><option value="8">8 kỳ gần nhất</option></select></div><div id="perfForm58"></div><div id="perfBody58"></div></div>`;
+      `<div class="card"><div class="head"><div><b>Báo cáo hiệu quả</b><div class="small">Chỉ số → Xu hướng → Hiệu quả theo kênh → Nhận định. Mỗi thứ Hai Telegram sẽ nhắc cập nhật số liệu tuần trước.</div></div></div><div class="contextbar" style="margin-top:14px"><div class="seg"><button id="fb58" class="${perfType === "facebook" ? "on" : ""}">Facebook</button><button id="tt58" class="${perfType === "tiktok" ? "on" : ""}">TikTok</button></div><select id="perfCh58"><option value="">Tất cả kênh</option>${names.map((x) => `<option>${E(x)}</option>`).join("")}</select><select id="perfRange58"><option value="0">Tất cả kỳ</option><option value="4">4 kỳ gần nhất</option><option value="8">8 kỳ gần nhất</option></select></div><div id="perfForm58"></div><div id="perfBody58"></div></div>`;
     $("#fb58").onclick = () => {
       perfType = "facebook";
       renderPerformance();
@@ -830,6 +904,24 @@
     $("#perfRange58").onchange = drawPerformance;
     drawPerformance();
   }
+  /** "▲ 12% so với kỳ trước" for the latest period vs the one before it. */
+  function deltaHtml(byPeriod, pick) {
+    if (byPeriod.length < 2) return '<span class="delta flat">Chưa có kỳ trước để so sánh</span>';
+    // Compare only channels present in both periods, so a missing page doesn't look like a drop.
+    const last = byPeriod[byPeriod.length - 1].rows,
+      before = byPeriod[byPeriod.length - 2].rows,
+      shared = new Set(last.map(channelOf).filter((name) => before.some((row) => channelOf(row) === name))),
+      current = pick(last.filter((row) => shared.has(channelOf(row)))),
+      previous = pick(before.filter((row) => shared.has(channelOf(row))));
+    if (!shared.size) return '<span class="delta flat">Kỳ trước không có cùng kênh để so sánh</span>';
+    if (!previous) return `<span class="delta flat">Kỳ trước = 0 · kỳ này ${num(current)}</span>`;
+    const change = ((current - previous) / previous) * 100,
+      text = Math.abs(change).toLocaleString("vi-VN", { maximumFractionDigits: 1 }) + "%";
+    if (Math.abs(change) < 0.05) return '<span class="delta flat">= Không đổi so với kỳ trước</span>';
+    return change > 0
+      ? `<span class="delta up">▲ ${text} so với kỳ trước</span>`
+      : `<span class="delta down">▼ ${text} so với kỳ trước</span>`;
+  }
   function drawPerformance() {
     const fb = perfType === "facebook",
       channel = $("#perfCh58").value,
@@ -837,44 +929,47 @@
     let rows = perfRows
       .filter((row) => !channel || channelOf(row) === channel)
       .sort((a, b) => (a.period_start || "").localeCompare(b.period_start || ""));
-    if (limit) rows = rows.slice(-limit);
-    const sum = (pick) => rows.reduce((total, row) => total + pick(row), 0),
-      views = sum((row) => Number(row.views || 0)),
-      engagement = sum(engagementOf),
-      clicks = sum((row) => Number(fb ? row.link_clicks || 0 : row.profile_views || 0)),
-      followers = fb
-        ? rows.length
-          ? Number(rows[rows.length - 1].followers || 0)
-          : 0
-        : sum((row) => Number(row.follower_new || 0)),
+    if (limit) {
+      const keep = new Set([...new Set(rows.map(periodKey))].slice(-limit));
+      rows = rows.filter((row) => keep.has(periodKey(row)));
+    }
+    const byPeriod = [...new Set(rows.map(periodKey))].map((key) => ({
+        key,
+        rows: rows.filter((row) => periodKey(row) === key),
+      })),
+      sumOf = (list, pick) => list.reduce((total, row) => total + pick(row), 0),
+      pickViews = (list) => sumOf(list, (row) => Number(row.views || 0)),
+      pickEngagement = (list) => sumOf(list, engagementOf),
+      pickClicks = (list) => sumOf(list, (row) => Number(fb ? row.link_clicks || 0 : row.profile_views || 0)),
+      pickFollowers = (list) => sumOf(list, (row) => Number(fb ? row.followers || 0 : row.follower_new || 0)),
+      latest = byPeriod.length ? byPeriod[byPeriod.length - 1].rows : [],
       channels = [...new Set(rows.map(channelOf).filter(Boolean))];
-    const metric = (label, value, note) =>
-      `<div class="metric"><span class="small">${label}</span><b>${num(value)}</b><span class="small">${note}</span></div>`;
+    const metric = (label, value, note, pick) =>
+      `<div class="metric"><span class="small">${label}</span><b>${num(value)}</b><span class="small">${note}</span>${deltaHtml(byPeriod, pick)}</div>`;
     $("#perfBody58").innerHTML =
-      `<div class="report-grid">${metric("Views", views, "Tổng trong kỳ chọn")}${metric("Engagement", engagement, "Tổng tương tác")}${metric(fb ? "Followers" : "Follower mới", followers, fb ? "Bản ghi mới nhất" : "Tổng trong kỳ")}${metric(fb ? "Link Clicks" : "Profile Views", clicks, "Tổng trong kỳ chọn")}</div>` +
-      `<div class="perf-main">${perfChart(rows)}<div class="panel"><b>✦ Darcy's Insights</b><p class="small">${rows.length < 2 ? "Cần ít nhất 2 kỳ dữ liệu để đọc xu hướng. Hiện chưa đủ dữ liệu để kết luận tăng/giảm." : `Có ${rows.length} bản ghi từ ${channels.length} kênh trong phạm vi đang chọn. Biểu đồ phía trái phản ánh Views theo từng kỳ.`}</p><p class="small">Không tự suy diễn hiệu quả Content/Pillar khi chưa có dữ liệu performance ở cấp bài viết.</p></div></div>` +
-      `<div class="panel subcard"><b>Channel Performance</b><table><thead><tr><th>Kênh</th><th>Kỳ</th><th>Views</th><th>Engagement</th><th>ER</th><th></th></tr></thead><tbody>${rows
+      `<div class="report-grid">${metric("Lượt xem", pickViews(rows), "Tổng trong phạm vi chọn", pickViews)}${metric("Tương tác", pickEngagement(rows), "Tổng tương tác", pickEngagement)}${metric(fb ? "Người theo dõi" : "Người theo dõi mới", fb ? pickFollowers(latest) : pickFollowers(rows), fb ? "Kỳ gần nhất" : "Tổng trong phạm vi chọn", pickFollowers)}${metric(fb ? "Lượt nhấp link" : "Lượt xem hồ sơ", pickClicks(rows), "Tổng trong phạm vi chọn", pickClicks)}</div>` +
+      `<div class="perf-main">${perfChart(rows)}<div class="panel"><b>✦ Nhận định của Darcy</b><p class="small">${byPeriod.length < 2 ? "Cần ít nhất 2 kỳ dữ liệu để đọc xu hướng. Hiện chưa đủ dữ liệu để kết luận tăng/giảm." : `Có ${rows.length} bản ghi từ ${channels.length} kênh trong ${byPeriod.length} kỳ. Mũi tên ▲▼ ở mỗi chỉ số so sánh kỳ gần nhất với kỳ ngay trước đó.`}</p><p class="small">Không tự suy diễn hiệu quả nội dung/pillar khi chưa có dữ liệu ở cấp bài viết.</p></div></div>` +
+      `<div class="panel subcard"><b>Hiệu quả theo kênh</b><table><thead><tr><th>Kênh</th><th>Kỳ</th><th>Lượt xem</th><th>Tương tác</th><th>Tỷ lệ tương tác</th><th></th></tr></thead><tbody>${rows
         .map((row) => {
           const e = engagementOf(row),
             v = Number(row.views || 0);
-          return `<tr><td><b>${E(channelOf(row))}</b></td><td>${E(row.week_label || dd(row.period_start))}</td><td>${num(v)}</td><td>${num(e)}</td><td>${v ? ((e / v) * 100).toFixed(2) + "%" : "—"}</td><td><button class="ellipsis" data-pedit="${row.id}">•••</button></td></tr>`;
+          return `<tr><td><b>${E(channelOf(row))}</b></td><td>${E(row.week_label || dd(row.period_start))}</td><td>${num(v)}</td><td>${num(e)}</td><td>${v ? ((e / v) * 100).toFixed(2) + "%" : "—"}</td><td><button class="ellipsis" data-pedit="${row.id}" title="Chỉnh sửa">•••</button></td></tr>`;
         })
         .join("")}</tbody></table></div>`;
     $$("[data-pedit]").forEach(
       (button) => (button.onclick = () => metricForm(perfRows.find((row) => row.id === button.dataset.pedit))),
     );
   }
-  /** Grouped Views chart: one bar per channel per period, fixed colour per channel. */
+  /** Grouped views chart: one bar per channel per period, fixed colour per channel. */
   function perfChart(rows) {
     if (!rows.length)
-      return '<div class="chart"><b>Performance Trend · Views</b><div class="empty">Chưa có dữ liệu trong phạm vi đang chọn.</div></div>';
+      return '<div class="chart"><b>Xu hướng lượt xem</b><div class="empty">Chưa có dữ liệu trong phạm vi đang chọn.</div></div>';
     const palette = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
       all = [...new Set(perfRows.map(channelOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi")),
       color = (name) => {
         const i = all.indexOf(name);
         return i >= 0 && i < palette.length ? palette[i] : "#8a8f98";
       },
-      periodKey = (row) => row.period_start || row.week_label || "",
       periods = [...new Set(rows.map(periodKey))],
       channels = all.filter((name) => rows.some((row) => channelOf(row) === name)),
       max = Math.max(1, ...rows.map((row) => Number(row.views || 0))),
@@ -900,33 +995,35 @@
               if (!row) return "";
               const v = Number(row.views || 0),
                 h = Math.max(1.5, (v / top) * 100);
-              return `<div class="gbar" title="${E(name)} · ${periodLabel(period)}: ${num(v)} views">${showValues ? `<span class="gval" style="bottom:calc(${h}% + 4px)">${short(v)}</span>` : ""}<div class="gfill" style="height:${h}%;background:${color(name)}"></div></div>`;
+              return `<div class="gbar" title="${E(name)} · ${periodLabel(period)}: ${num(v)} lượt xem">${showValues ? `<span class="gval" style="bottom:calc(${h}% + 4px)">${short(v)}</span>` : ""}<div class="gfill" style="height:${h}%;background:${color(name)}"></div></div>`;
             })
             .join("")}</div>`,
       )
       .join("");
-    return `<div class="chart"><div class="chart-head"><b>Performance Trend · Views</b><div class="legend">${channels.map((name) => `<span><i style="background:${color(name)}"></i>${E(name)}</span>`).join("")}</div></div><div class="plot"><div class="yaxis">${[top, top / 2, 0].map((v) => `<span>${short(v)}</span>`).join("")}</div><div class="groups">${bars}</div><span></span><div class="xlabels">${periods.map((period) => `<div class="barlab">${periodLabel(period)}</div>`).join("")}</div></div></div>`;
+    return `<div class="chart"><div class="chart-head"><b>Xu hướng lượt xem</b><div class="legend">${channels.map((name) => `<span><i style="background:${color(name)}"></i>${E(name)}</span>`).join("")}</div></div><div class="plot"><div class="yaxis">${[top, top / 2, 0].map((v) => `<span>${short(v)}</span>`).join("")}</div><div class="groups">${bars}</div><span></span><div class="xlabels">${periods.map((period) => `<div class="barlab">${periodLabel(period)}</div>`).join("")}</div></div></div>`;
   }
   function metricForm(r = {}) {
+    if (!$("#perfForm58")) return show("performance").then(() => metricForm(r));
     const fb = perfType === "facebook",
       name = fb ? "page" : "channel",
       table = perfTable(),
       field = (label, key) => `<label>${label}<input type="number" name="${key}" value="${E(r[key] ?? 0)}"></label>`;
     $("#perfForm58").innerHTML =
-      `<form id="mf58" class="form58"><label>${fb ? "Fanpage" : "TikTok Channel"}<input name="${name}" required value="${E(r[name] || "")}"></label><label>Nhãn kỳ<input name="week_label" value="${E(r.week_label || "")}"></label><label>Từ ngày<input type="date" name="period_start" required value="${E(r.period_start || "")}"></label><label>Đến ngày<input type="date" name="period_end" value="${E(r.period_end || "")}"></label>${
+      `<form id="mf58" class="form58"><label>${fb ? "Fanpage" : "Kênh TikTok"}<input name="${name}" required value="${E(r[name] || "")}"></label><label>Nhãn kỳ<input name="week_label" value="${E(r.week_label || "")}" placeholder="VD: Tuần 07/09"></label><label>Từ ngày<input type="date" name="period_start" required value="${E(r.period_start || "")}"></label><label>Đến ngày<input type="date" name="period_end" value="${E(r.period_end || "")}"></label>${
         fb
-          ? field("Followers", "followers") +
-            field("Views", "views") +
-            field("Engagements", "engagements") +
-            field("Link Clicks", "link_clicks")
-          : field("Follower mới", "follower_new") +
-            field("Video Views", "views") +
-            field("Profile Views", "profile_views") +
-            field("Likes", "likes") +
-            field("Comments", "comments") +
-            field("Shares", "shares")
+          ? field("Người theo dõi", "followers") +
+            field("Lượt xem", "views") +
+            field("Tương tác", "engagements") +
+            field("Lượt nhấp link", "link_clicks")
+          : field("Người theo dõi mới", "follower_new") +
+            field("Lượt xem video", "views") +
+            field("Lượt xem hồ sơ", "profile_views") +
+            field("Lượt thích", "likes") +
+            field("Bình luận", "comments") +
+            field("Chia sẻ", "shares")
       }<label class="full">Ghi chú<textarea name="notes">${E(r.notes || "")}</textarea></label><div class="formactions">${r.id ? '<button type="button" class="btn" id="mfDel">Xóa</button>' : ""}<button type="button" class="btn" id="mfCancel">Hủy</button><button class="btn primary">Lưu số liệu</button></div></form>`;
     const form = $("#mf58");
+    form.scrollIntoView({ behavior: "smooth", block: "nearest" });
     $("#mfCancel").onclick = () => ($("#perfForm58").innerHTML = "");
     $("#mfDel")?.addEventListener("click", async () => {
       if (!confirm("Xóa bản ghi này?")) return;
@@ -949,7 +1046,28 @@
   // =====================================================================
   // Schedule
   // =====================================================================
-  let schedules = [];
+  function renderSchedule() {
+    const now = today(),
+      list = [...state.schedules].sort((a, b) => (a.completed === b.completed ? 0 : a.completed ? 1 : -1)),
+      groups = [
+        ["Sắp tới", (x) => !x.completed && x.event_date >= now],
+        ["Đã qua nhưng chưa hoàn thành", (x) => !x.completed && x.event_date < now],
+        ["Đã hoàn thành", (x) => x.completed],
+      ];
+    const card = (x) =>
+      `<div class="panel schedule-card ${x.completed ? "is-complete" : x.event_date < now ? "is-overdue" : ""}"><div class="schedule-main" data-schedule-open="${x.id}"><b>${x.completed ? "✓ " : ""}${E(x.title)}</b><div class="small">${scheduleWhen(x)}</div><div class="small">${x.location ? "📍 " + E(x.location) + " · " : ""}${x.reminder_minutes != null ? "🔔 Telegram trước " + x.reminder_minutes + " phút" : ""}</div></div><div class="schedule-actions">${x.completed ? `<button class="btn" data-schedule-reopen="${x.id}" title="Chuyển lại thành chưa hoàn thành">↺ Mở lại</button>` : `<button class="btn" data-quick-schedule="${x.id}">✓ Hoàn thành</button>`}${x.url ? `<a class="btn" target="_blank" rel="noopener" href="${E(x.url)}">Mở link ↗</a>` : ""}<button class="ellipsis" data-schedule-open="${x.id}" title="Chỉnh sửa">•••</button></div></div>`;
+    $("#schedule").innerHTML =
+      `<div class="card"><div class="head"><div><b>Lịch trình</b><div class="small">Bấm vào lịch trình để chỉnh sửa. Mục “Nhắc trước” sẽ gửi qua Telegram; lịch đã hoàn thành sẽ không nhắc nữa.</div></div></div>${
+        groups
+          .map(([label, test]) => {
+            const items = list.filter(test);
+            return items.length
+              ? `<section class="schedule-group"><h3>${label} · ${items.length}</h3>${items.map(card).join("")}</section>`
+              : "";
+          })
+          .join("") || '<div class="empty">Chưa có lịch trình.</div>'
+      }</div>`;
+  }
   /** Normalize a schedule form into a DB payload. */
   function schedulePayload(form) {
     const payload = Object.fromEntries(new FormData(form));
@@ -960,69 +1078,10 @@
     payload.completed = form.elements.completed.checked;
     return payload;
   }
-  async function renderSchedule() {
-    try {
-      schedules = (await db.select("personal_schedule")).sort(
-        (a, b) =>
-          (a.completed === b.completed ? 0 : a.completed ? 1 : -1) ||
-          ((a.event_date || "") + (a.start_time || "")).localeCompare((b.event_date || "") + (b.start_time || "")),
-      );
-    } catch (error) {
-      schedules = [];
-    }
-    const now = today(),
-      groups = [
-        ["Sắp tới", (x) => !x.completed && x.event_date >= now],
-        ["Đã qua nhưng chưa hoàn thành", (x) => !x.completed && x.event_date < now],
-        ["Đã hoàn thành", (x) => x.completed],
-      ];
-    const card = (x) =>
-      `<div class="panel schedule-card ${x.completed ? "is-complete" : x.event_date < now ? "is-overdue" : ""}"><div><b>${x.completed ? "✓ " : ""}${E(x.title)}</b><div class="small">${dd(x.event_date)} ${x.start_time ? "· " + x.start_time.slice(0, 5) : ""}${x.end_time ? " → " + x.end_time.slice(0, 5) : ""}</div><div class="small">${x.location ? "📍 " + E(x.location) + " · " : ""}${x.reminder_minutes != null ? "🔔 Telegram trước " + x.reminder_minutes + " phút" : ""}</div></div><div class="schedule-actions">${!x.completed ? `<button class="btn" data-scomplete="${x.id}">✓ Hoàn thành</button>` : ""}${x.url ? `<a class="btn" target="_blank" rel="noopener" href="${E(x.url)}">Mở link ↗</a>` : ""}<button class="ellipsis" data-sedit="${x.id}">•••</button></div></div>`;
-    $("#schedule").innerHTML =
-      `<div class="card"><div class="head"><div><b>Schedule</b><div class="small">Lịch trình riêng và cuộc hẹn của Darcy. Mục “Nhắc trước” sẽ gửi qua Telegram.</div></div></div><div id="schForm58"></div>${
-        groups
-          .map(([label, test]) => {
-            const items = schedules.filter(test);
-            return items.length
-              ? `<section class="schedule-group"><h3>${label} · ${items.length}</h3>${items.map(card).join("")}</section>`
-              : "";
-          })
-          .join("") || '<div class="empty">Chưa có lịch trình.</div>'
-      }</div>`;
-    $$("[data-sedit]").forEach(
-      (button) => (button.onclick = () => scheduleForm(schedules.find((x) => x.id === button.dataset.sedit))),
-    );
-    $$("[data-scomplete]").forEach(
-      (button) =>
-        (button.onclick = async () => {
-          button.disabled = true;
-          button.textContent = "Đang lưu…";
-          await db.save("personal_schedule", { completed: true }, button.dataset.scomplete);
-          await renderSchedule();
-        }),
-    );
-  }
-  function scheduleForm(r = {}) {
-    $("#schForm58").innerHTML =
-      `<form id="sf58" class="form58"><label>Tên lịch trình<input name="title" required value="${E(r.title || "")}"></label><label>Ngày<input type="date" name="event_date" required value="${E(r.event_date || "")}"></label><label>Giờ bắt đầu<input type="time" name="start_time" value="${E((r.start_time || "").slice(0, 5))}"></label><label>Giờ kết thúc<input type="time" name="end_time" value="${E((r.end_time || "").slice(0, 5))}"></label><label>Địa điểm<input name="location" value="${E(r.location || "")}"></label><label>Nhắc qua Telegram trước (phút)<input type="number" min="0" name="reminder_minutes" value="${E(r.reminder_minutes ?? "")}"><span class="small">Cần có giờ bắt đầu; để trống nếu không cần nhắc.</span></label><label class="full" style="display:flex;grid-template-columns:auto 1fr;align-items:center;gap:9px;color:var(--ink)"><input type="checkbox" name="completed" style="width:auto" ${r.completed ? "checked" : ""}><span>Đã hoàn thành</span></label><label class="full">Link liên quan<input type="url" name="url" value="${E(r.url || "")}"></label><label class="full">Ghi chú<textarea name="notes">${E(r.notes || "")}</textarea></label><div class="formactions">${r.id ? '<button type="button" class="btn" id="sfDel">Xóa</button>' : ""}<button type="button" class="btn" id="sfCancel">Hủy</button><button class="btn primary">Lưu lịch trình</button></div></form>`;
-    const form = $("#sf58");
-    $("#sfCancel").onclick = () => ($("#schForm58").innerHTML = "");
-    $("#sfDel")?.addEventListener("click", async () => {
-      if (!confirm("Xóa lịch trình này?")) return;
-      await db.remove("personal_schedule", r.id);
-      renderSchedule();
-    });
-    form.onsubmit = async (event) => {
-      event.preventDefault();
-      await db.save("personal_schedule", schedulePayload(form), r.id);
-      renderSchedule();
-    };
-  }
-
-  // Schedule edit sheet — opened from Calendar, Overview and search.
-  async function openScheduleSheet(id) {
-    let record = {};
-    if (id) {
+  // Schedule edit sheet — one form used by Calendar, Overview, Schedule page, summary sheet and search.
+  async function openScheduleSheet(id = null) {
+    let record = id ? state.schedules.find((item) => item.id === id) : {};
+    if (id && !record) {
       try {
         record = await db.selectOne("personal_schedule", id);
       } catch (error) {
@@ -1032,15 +1091,16 @@
     }
     const body = openSheet(
       id ? "Chỉnh sửa lịch trình" : "Thêm lịch trình",
-      `<form class="form58 sheet-form" id="schedSheet"><label class="full">Tên lịch trình<input name="title" required value="${E(record.title || "")}"></label><label>Ngày<input type="date" name="event_date" required value="${E(record.event_date || today())}"></label><label>Nhắc Telegram trước (phút)<input type="number" min="0" name="reminder_minutes" value="${E(record.reminder_minutes ?? "")}"></label><label>Giờ bắt đầu<input type="time" name="start_time" value="${E((record.start_time || "").slice(0, 5))}"></label><label>Giờ kết thúc<input type="time" name="end_time" value="${E((record.end_time || "").slice(0, 5))}"></label><label class="full">Địa điểm<input name="location" value="${E(record.location || "")}"></label><label class="full">Link liên quan<input type="url" name="url" value="${E(record.url || "")}"></label><label class="full">Ghi chú<textarea name="notes">${E(record.notes || "")}</textarea></label><label class="full check-row"><input type="checkbox" name="completed" ${record.completed ? "checked" : ""}><span>Đã hoàn thành</span></label><div class="formactions full">${id ? '<button type="button" class="btn" data-sheet-del>Xóa</button>' : ""}<button type="button" class="btn" data-sheet-cancel>Hủy</button><button class="btn primary">Lưu</button></div></form>`,
+      `<form class="form58 sheet-form" id="schedSheet"><label class="full">Tên lịch trình<input name="title" required value="${E(record.title || "")}"></label><label>Ngày<input type="date" name="event_date" required value="${E(record.event_date || today())}"></label><label>Nhắc Telegram trước (phút)<input type="number" min="0" name="reminder_minutes" value="${E(record.reminder_minutes ?? "")}"></label><label>Giờ bắt đầu<input type="time" name="start_time" value="${E((record.start_time || "").slice(0, 5))}"></label><label>Giờ kết thúc<input type="time" name="end_time" value="${E((record.end_time || "").slice(0, 5))}"></label><label class="full">Địa điểm<input name="location" value="${E(record.location || "")}"></label><label class="full">Link liên quan<input type="url" name="url" value="${E(record.url || "")}"></label><label class="full">Ghi chú<textarea name="notes">${E(record.notes || "")}</textarea></label><label class="full check-row"><input type="checkbox" name="completed" ${record.completed ? "checked" : ""}><span>Đã hoàn thành</span></label><div class="small full">Nhắc Telegram cần có giờ bắt đầu; để trống nếu không cần nhắc.</div><div class="formactions full">${id ? '<button type="button" class="btn" data-sheet-del>Xóa</button>' : ""}<button type="button" class="btn" data-sheet-cancel>Hủy</button><button class="btn primary">Lưu</button></div></form>`,
     );
     const form = body.querySelector("form");
+    form.elements.title.focus();
     form.querySelector("[data-sheet-cancel]").onclick = closeSheet;
     form.querySelector("[data-sheet-del]")?.addEventListener("click", async () => {
       if (!confirm("Xóa lịch trình này?")) return;
       await db.remove("personal_schedule", id);
       closeSheet();
-      await rerenderScheduleViews();
+      await sync();
       toast("Đã xóa lịch trình");
     });
     form.onsubmit = async (event) => {
@@ -1051,7 +1111,7 @@
       try {
         await db.save("personal_schedule", schedulePayload(form), id || undefined);
         closeSheet();
-        await rerenderScheduleViews();
+        await sync();
         toast(id ? "Đã lưu lịch trình" : "Đã thêm lịch trình");
       } catch (error) {
         console.error(error);
@@ -1061,25 +1121,32 @@
       }
     };
   }
-  async function rerenderScheduleViews() {
-    if (isOn("calendar")) await renderCalendar();
-    if (isOn("overview")) await renderOverview();
-    if (isOn("schedule")) await renderSchedule();
+  /** Tick / untick a schedule (same flow as tasks: save → refresh → toast with undo). */
+  async function setScheduleDone(id, completed, button) {
+    const item = state.schedules.find((row) => row.id === id);
+    if (!item) return;
+    button.disabled = true;
+    const label = button.textContent;
+    button.textContent = "…";
+    try {
+      await db.save("personal_schedule", { completed }, id);
+      await sync();
+      redrawDrill();
+      toast(completed ? `Đã hoàn thành “${item.title}”` : `Đã mở lại “${item.title}”`, async () => {
+        await db.save("personal_schedule", { completed: !completed }, id);
+        await sync();
+        redrawDrill();
+      });
+    } catch (error) {
+      console.error(error);
+      button.disabled = false;
+      button.textContent = label;
+      toast("⚠ Lưu không thành công, thử lại nhé");
+    }
   }
-  d.addEventListener(
-    "click",
-    (event) => {
-      const node = event.target.closest("#calendar [data-schedule-id], #overview [data-overview-schedule]");
-      if (!node) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      openScheduleSheet(node.dataset.scheduleId || node.dataset.overviewSchedule);
-    },
-    true,
-  );
 
   // =====================================================================
-  // Toast, sheet, quick-done
+  // Toast, sheet, quick actions
   // =====================================================================
   let toastTimer = null;
   function toast(message, undo) {
@@ -1123,8 +1190,9 @@
   const closeSheet = () => $(".darcy-sheet-bg")?.remove();
   d.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      closeSheet();
-      closeSearch();
+      if ($(".darcy-search-bg")) return closeSearch();
+      if ($(".darcy-sheet-bg")) return closeSheet();
+      closeForm();
     }
   });
 
@@ -1154,8 +1222,7 @@
     try {
       const undo = await setTaskDone(task);
       await sync();
-      const drill = $(".darcy-sheet-bg [data-drill]");
-      if (drill) drawDrill(drill.dataset.drill);
+      redrawDrill();
       toast(`Đã hoàn thành “${task.name}”`, undo);
     } catch (error) {
       console.error(error);
@@ -1164,15 +1231,29 @@
       toast("⚠ Lưu không thành công, thử lại nhé");
     }
   }
-  // Capture phase so the tick never also opens the task form underneath it.
+  // Quick actions run in the capture phase so they never also trigger the card underneath
+  // (e.g. ticking a task must not open its form).
+  const QUICK_ACTIONS = [
+    ["[data-quick-done]", (el) => quickDone(el.dataset.quickDone, el)],
+    ["[data-quick-schedule]", (el) => setScheduleDone(el.dataset.quickSchedule, true, el)],
+    ["[data-schedule-reopen]", (el) => setScheduleDone(el.dataset.scheduleReopen, false, el)],
+    ["[data-pdone]", (el) => setProjectStatus(el.dataset.pdone, DONE_STATUS, el)],
+    ["[data-preopen]", (el) => setProjectStatus(el.dataset.preopen, IN_PROGRESS, el)],
+    ["[data-pin]", (el) => togglePin(el.dataset.pin, el)],
+    ["[data-schedule-open]", (el) => openScheduleSheet(el.dataset.scheduleOpen)],
+  ];
   d.addEventListener(
     "click",
     (event) => {
-      const button = event.target.closest("[data-quick-done]");
-      if (!button) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      quickDone(button.dataset.quickDone, button);
+      if (event.target.closest("a[href]")) return;
+      for (const [selector, run] of QUICK_ACTIONS) {
+        const el = event.target.closest(selector);
+        if (!el) continue;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!el.disabled) run(el);
+        return;
+      }
     },
     true,
   );
@@ -1180,7 +1261,7 @@
   // =====================================================================
   // Quick search (⌘K / Ctrl+K)
   // =====================================================================
-  let searchCache = null;
+  let resourceCache = null;
   const closeSearch = () => $(".darcy-search-bg")?.remove();
   const normalize = (text) =>
     String(text || "")
@@ -1204,13 +1285,7 @@
     input.focus();
     let active = 0,
       hits = [];
-    if (!searchCache) {
-      const [scheduleRows, resources] = await Promise.all([
-        db.select("personal_schedule").catch(() => []),
-        db.select("library_resources").catch(() => []),
-      ]);
-      searchCache = { schedules: scheduleRows, resources };
-    }
+    if (!resourceCache) resourceCache = await db.select("library_resources").catch(() => []);
     const render = () => {
       const q = normalize(input.value.trim());
       const pool = [
@@ -1230,19 +1305,19 @@
           open: () => openForm("projects", project.id),
           text: project.name + " " + (project.project_group || ""),
         })),
-        ...searchCache.schedules.map((item) => ({
+        ...state.schedules.map((item) => ({
           type: "Lịch trình",
           icon: "◷",
           label: item.title,
-          meta: `${dd(item.event_date)}${item.start_time ? " · " + item.start_time.slice(0, 5) : ""}${item.location ? " · " + item.location : ""}`,
+          meta: `${scheduleWhen(item)}${item.location ? " · " + item.location : ""}${item.completed ? " · Đã xong" : ""}`,
           open: () => openScheduleSheet(item.id),
           text: item.title + " " + (item.location || ""),
         })),
-        ...searchCache.resources.map((item) => ({
+        ...resourceCache.map((item) => ({
           type: "Tài liệu",
           icon: "▤",
           label: item.name,
-          meta: `${item.channel || ""} · ${item.resource_type || ""}`,
+          meta: `${item.channel || ""} · ${resourceType(item.resource_type)}`,
           open: () => item.url && window.open(item.url, "_blank", "noopener"),
           text: item.name + " " + (item.channel || ""),
         })),
@@ -1299,7 +1374,7 @@
   // Boot
   // =====================================================================
   d.addEventListener("darcy:synced", () => {
-    searchCache = null;
+    resourceCache = null;
     show(activePage());
   });
   async function login() {
