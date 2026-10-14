@@ -1,1 +1,103 @@
-<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Darcy's Space</title><link rel="stylesheet" href="assets/styles.css"></head><body><section id="login" class="login"><div class="loginbox"><h1 style="color:var(--r)">PNE</h1><h2>Marketing Operations V5.3 ✨</h2><p class="muted">Task cố định theo tuần + task Project + task phát sinh.</p><input id="email" type="email" placeholder="Email"><input id="password" type="password" placeholder="Mật khẩu"><button id="loginBtn" class="btn primary" style="width:100%">Đăng nhập</button><p id="loginMsg" class="small"></p></div></section><div id="app" class="app"><aside class="side"><b>PNE</b><small> Marketing Operations</small><nav class="nav"><button class="on" data-v="overview">⌂ <span>Tổng quan</span></button><button data-v="calendar">▦ <span>Lịch công việc</span></button><button data-v="tasks">☷ <span>Công việc</span></button><button data-v="projects">◫ <span>Projects</span></button></nav></aside><main class="main"><header class="top"><div><h1 id="title">Tổng quan</h1><p class="muted">PLAN → DO → LEARN · Việc lặp theo tuần được reset trạng thái riêng mỗi tuần.</p></div><div class="actions"><button class="btn primary" id="quickTask">＋ Task</button><button class="btn soft" id="quickProject">＋ Project</button><button class="btn" id="syncBtn">↻</button><button class="btn" id="logoutBtn">Đăng xuất</button></div></header><p><span id="dbState" class="pill">Đang kết nối...</span></p><section id="overview" class="view on"><div id="kpis" class="kpis"></div><div class="card"><div class="head"><div><b>Việc cần xử lý</b><div class="small">Task cố định được tính theo lịch tuần hiện tại; task khác theo ngày thực hiện/deadline.</div></div></div><div id="attention"></div></div></section><section id="calendar" class="view"><div class="card"><div class="head"><div><b>Lịch công việc tổng</b><div class="small">Task cố định tự xuất hiện mỗi tuần. Click task để cập nhật.</div></div><button class="btn primary" data-new="tasks">＋ Thêm việc</button></div><div class="filters"><button class="btn" id="prevMonth">‹</button><input type="month" id="calMonth"><button class="btn" id="nextMonth">›</button></div><div id="calendarBox"></div></div></section><section id="tasks" class="view"><div class="card"><div class="head"><b>Công việc</b><button class="btn primary" data-new="tasks">＋ Thêm task</button></div><div class="filters"><input id="taskSearch" placeholder="Tìm task..."><select id="taskMode"><option value="">Tất cả loại</option><option value="routine">Task cố định</option><option value="project">Theo project</option><option value="ad_hoc">Phát sinh</option></select></div><div id="taskBox"></div></div></section><section id="projects" class="view"><div class="card"><div class="head"><div><b>Projects</b><div class="small">Tạo project rồi thêm task con bên trong.</div></div><button class="btn primary" data-new="projects">＋ Tạo project</button></div><div id="projectBox" class="projectgrid"></div></div></section></main></div><div id="modalBg" class="modalbg"><div class="modal"><div class="head"><div><b id="formTitle"></b><div id="formHint" class="small"></div></div><button class="btn" id="closeModal">✕</button></div><div id="dynamicForm" class="form"></div><div id="children"></div><div class="actions" style="justify-content:flex-end;margin-top:14px"><span id="saveState" class="small"></span><button id="deleteBtn" class="btn">Xóa</button><button id="saveBtn" class="btn primary">Lưu & cập nhật</button></div></div></div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="js/core.js"></script><script src="js/app.js"></script></body></html>
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Darcy's Space</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <section id="login" class="login">
+      <div class="loginbox">
+        <h1 style="color: var(--r)">Darcy's Space</h1>
+        <h2>Welcome back, Darcy ✦</h2>
+        <p class="muted">Mọi công việc, kế hoạch và tài nguyên của Darcy ở cùng một nơi.</p>
+        <input id="email" type="email" placeholder="Email" /><input
+          id="password"
+          type="password"
+          placeholder="Mật khẩu"
+        /><button id="loginBtn" class="btn primary" style="width: 100%">Đăng nhập</button>
+        <p id="loginMsg" class="small"></p>
+      </div>
+    </section>
+
+    <div id="app" class="app">
+      <aside class="side">
+        <div class="brand-space">Darcy's Space</div>
+        <small class="brand-sub">your personal workspace ✦</small>
+        <nav class="nav">
+          <button class="on" data-space="overview" title="Overview" aria-label="Overview">⌂ <span>Overview</span></button>
+          <button data-space="calendar" title="Calendar" aria-label="Calendar">▦ <span>Calendar</span></button>
+          <button data-space="work" title="Project &amp; Task" aria-label="Project &amp; Task">☷ <span>Project &amp; Task</span></button>
+          <button data-space="performance" title="Performance" aria-label="Performance">⌁ <span>Performance</span></button>
+          <button data-space="library" title="Library" aria-label="Library">▤ <span>Library</span></button>
+          <button data-space="schedule" title="Schedule" aria-label="Schedule">◷ <span>Schedule</span></button>
+        </nav>
+      </aside>
+      <main class="main">
+        <header class="top">
+          <div>
+            <h1 id="title">Overview</h1>
+            <p class="muted" id="subtitle">Hôm nay Darcy cần quan tâm điều gì?</p>
+          </div>
+          <div class="actions" id="topActions"></div>
+        </header>
+        <p><span id="dbState" class="pill">Đang kết nối...</span></p>
+
+        <section id="overview" class="view on"></section>
+        <section id="calendar" class="view"></section>
+        <section id="tasks" class="view">
+          <div id="projectInWork">
+            <div class="card">
+              <div class="head">
+                <div>
+                  <b>Projects</b>
+                  <div class="small">Project và task con trong cùng workspace.</div>
+                </div>
+              </div>
+              <div id="projectCards58" class="projectgrid"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="head"><b>Công việc</b></div>
+            <div class="filters">
+              <input id="taskSearch" placeholder="Tìm task..." /><select id="taskMode">
+                <option value="">Tất cả loại</option>
+                <option value="routine">Task cố định</option>
+                <option value="project">Theo project</option>
+                <option value="ad_hoc">Phát sinh</option>
+              </select>
+            </div>
+            <div id="taskBox"></div>
+          </div>
+        </section>
+        <section id="performance" class="view"></section>
+        <section id="library" class="view"></section>
+        <section id="schedule" class="view"></section>
+      </main>
+    </div>
+
+    <!-- Task / project form -->
+    <div id="modalBg" class="modalbg">
+      <div class="modal">
+        <div class="head">
+          <div>
+            <b id="formTitle"></b>
+            <div id="formHint" class="small"></div>
+          </div>
+          <button class="btn" id="closeModal">✕</button>
+        </div>
+        <div id="dynamicForm" class="form"></div>
+        <div id="children"></div>
+        <div class="actions" style="justify-content: flex-end; margin-top: 14px">
+          <span id="saveState" class="small"></span><button id="deleteBtn" class="btn">Xóa</button
+          ><button id="saveBtn" class="btn primary">Lưu & cập nhật</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/core.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
