@@ -11,8 +11,8 @@ Personal marketing operations dashboard for planning projects, tasks, schedules,
 ## Structure
 
 - `assets/styles.css` — shared design system and responsive layout.
-- `js/core.js` — Supabase connection, authentication and core Task/Project data.
-- `js/app.js` — Overview, Calendar, Project & Task, Performance, Library and Schedule.
+- `js/core.js` — Supabase connection, auth, data store and shared task rules (`daySets`).
+- `js/app.js` — UI: Overview, Calendar, Project & Task, Performance, Library, Schedule, forms, quick search.
 - `supabase/` — reproducible database schema.
 - `automation/` — Telegram reminder state.
 - `.github/workflows/` — Pages deployment and Telegram automation.
