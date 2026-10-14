@@ -1,13 +1,202 @@
-const $=s=>document.querySelector(s)||document.createElement('div'),$$=s=>Array.from(document.querySelectorAll(s));const sb=window.supabase.createClient('https://dqxbyikczcfqinxobvsq.supabase.co','sb_publishable_MOlWnlepLFI8sAyCbEYgJw_cVkskGNk');let D={tasks:[],projects:[],instances:[]},ctx=null;const WD=['','T2','T3','T4','T5','T6','T7','CN'],esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),finished=s=>/hoàn thành|đã chốt|đã đăng/i.test(s||''),mode=m=>m==='routine'?'Cố định':m==='project'?'Project':'Phát sinh',iso=d=>{let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),x=String(d.getDate()).padStart(2,'0');return y+'-'+m+'-'+x},dow=d=>d.getDay()===0?7:d.getDay(),monday=d=>{let x=new Date(d);x.setHours(12,0,0,0);x.setDate(x.getDate()-(dow(x)-1));return iso(x)},addDays=(ds,n)=>{let d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)},inst=(task,ws)=>D.instances.find(i=>i.task_id===task.id&&i.week_start===ws),routineStatus=(task,ws)=>inst(task,ws)?.status||'Chưa bắt đầu';
-async function login(){let b=$('#loginBtn');b.disabled=true;$('#loginMsg').textContent='Đang đăng nhập...';let{data,error}=await sb.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#password').value});b.disabled=false;if(error)return $('#loginMsg').textContent='⚠ '+error.message;if(data.session)showApp()}async function showApp(){let{data:{session}}=await sb.auth.getSession();if(!session)return;$('#login').style.display='none';$('#app').style.display='grid';await sync()}async function sync(){$('#dbState').textContent='Đang đồng bộ...';try{for(const [k,t] of [['tasks','tasks'],['projects','projects'],['instances','task_weekly_instances']]){let{data,error}=await sb.from(t).select('*');if(error)throw error;D[k]=data||[]}$('#dbState').textContent='✓ Supabase đã đồng bộ';$('#dbState').className='pill ok';render();document.dispatchEvent(new Event('darcy:synced'))}catch(e){$('#dbState').textContent='⚠ '+e.message}}
-function currentSets(){let now=new Date(),today=iso(now),wd=dow(now),ws=monday(now),routineToday=D.tasks.filter(t=>t.work_mode==='routine'&&t.weekday_start&&t.weekday_end&&wd>=t.weekday_start&&wd<=t.weekday_end&&!finished(routineStatus(t,ws))),datedToday=D.tasks.filter(t=>t.work_mode!=='routine'&&t.execution_date===today&&!finished(t.status)),routineOver=D.tasks.filter(t=>t.work_mode==='routine'&&t.weekday_end&&wd>t.weekday_end&&!finished(routineStatus(t,ws))),datedOver=D.tasks.filter(t=>t.work_mode!=='routine'&&t.deadline&&t.deadline<today&&!finished(t.status));return{today:[...routineToday,...datedToday],over:[...routineOver,...datedOver],ws}}
-function render(){let s=currentSets();$('#kpis').innerHTML=[['all','Tổng task',D.tasks.length],['today','Hôm nay',s.today.length],['projects','Projects',D.projects.length],['overdue','Quá hạn',s.over.length]].map(x=>'<div class="card kpi" data-kpi="'+x[0]+'"><span class="small">'+x[1]+'</span><b>'+x[2]+'</b></div>').join('');$('#attention').innerHTML=[...s.today,...s.over].filter((v,i,a)=>a.findIndex(x=>x.id===v.id)===i).slice(0,12).map(t=>'<div class="event '+(t.work_mode==='routine'?'routine':'')+'" data-edit="tasks" data-id="'+t.id+'"><b>'+esc(t.name)+'</b><br>'+(t.work_mode==='routine'?'Mỗi tuần '+WD[t.weekday_start]+' → '+WD[t.weekday_end]+' · '+routineStatus(t,s.ws):esc(t.execution_date||'')+' · '+esc(t.status||''))+'</div>').join('')||'<div class="empty">Chưa có việc cần xử lý 🎉</div>';renderTasks();renderProjects();renderCalendar()}
-function renderTasks(){let q=$('#taskSearch').value.toLowerCase(),m=$('#taskMode').value,a=D.tasks.filter(t=>(!m||t.work_mode===m)&&JSON.stringify(t).toLowerCase().includes(q)),ws=monday(new Date());$('#taskBox').innerHTML=a.length?'<table><thead><tr><th>Task</th><th>Loại</th><th>Project</th><th>Lịch</th><th>Trạng thái</th></tr></thead><tbody>'+a.map(t=>{let p=D.projects.find(x=>x.id===t.project_id),schedule=t.work_mode==='routine'?(t.weekday_start?'Mỗi tuần '+WD[t.weekday_start]+' → '+WD[t.weekday_end]:'⚠ Chưa đặt lịch tuần'):esc(t.execution_date||'—')+' → '+esc(t.deadline||'—'),st=t.work_mode==='routine'?routineStatus(t,ws):t.status;return '<tr class="row" data-edit="tasks" data-id="'+t.id+'"><td><b>'+esc(t.name)+'</b><br><span class="small">'+esc(t.how_to||t.description||'')+'</span></td><td>'+mode(t.work_mode)+'</td><td>'+esc(p?.name||'—')+'</td><td>'+schedule+'</td><td>'+esc(st||'—')+'</td></tr>'}).join('')+'</tbody></table>':'<div class="empty">Chưa có task.</div>'}
-function renderProjects(){$('#projectBox').innerHTML=D.projects.map(p=>{let ts=D.tasks.filter(t=>t.project_id===p.id);return '<div class="card row" data-edit="projects" data-id="'+p.id+'"><span class="tag">'+esc(p.project_group||'Project')+'</span><h3>'+esc(p.name)+'</h3><div class="small">Deadline '+esc(p.deadline||'—')+'</div><p><b>'+ts.length+'</b> task con</p><span class="tag">'+esc(p.status||'—')+'</span></div>'}).join('')||'<div class="empty">Chưa có project.</div>'}
-function renderCalendar(){let ym=$('#calMonth').value||iso(new Date()).slice(0,7);$('#calMonth').value=ym;let[y,m]=ym.split('-').map(Number),first=new Date(y,m-1,1),last=new Date(y,m,0),start=dow(first)-1,h=['T2','T3','T4','T5','T6','T7','CN'].map(d=>'<div class="calhead">'+d+'</div>').join('');for(let i=0;i<start;i++)h+='<div class="calday"></div>';for(let d=1;d<=last.getDate();d++){let ds=ym+'-'+String(d).padStart(2,'0'),date=new Date(ds+'T12:00:00'),wd=dow(date),ws=monday(date),dated=D.tasks.filter(t=>t.work_mode!=='routine'&&t.execution_date===ds),routines=D.tasks.filter(t=>t.work_mode==='routine'&&t.weekday_start===wd);h+='<div class="calday"><b>'+d+'</b>'+routines.map(t=>'<div class="event routine" data-edit="tasks" data-id="'+t.id+'"><b>'+esc(t.name)+'</b><br>'+WD[t.weekday_start]+' → '+WD[t.weekday_end]+' · '+esc(routineStatus(t,ws))+'</div>').join('')+dated.map(t=>'<div class="event '+(t.work_mode==='project'?'project':'')+'" data-edit="tasks" data-id="'+t.id+'"><b>'+esc(t.name)+'</b><br>'+esc(t.status||'')+'</div>').join('')+'</div>'}$('#calendarBox').innerHTML='<div class="calendar">'+h+'</div>'}
-function projectOpts(v){return '<option value="">— Không thuộc project —</option>'+D.projects.map(p=>'<option value="'+p.id+'" '+(p.id===v?'selected':'')+'>'+esc(p.name)+'</option>').join('')}function dayOpts(v){return [1,2,3,4,5,6,7].map(n=>'<option value="'+n+'" '+(Number(v)===n?'selected':'')+'>'+WD[n]+'</option>').join('')}
-function taskFields(rec){let routine=rec.work_mode==='routine',ws=monday(new Date()),weekly=routineStatus(rec,ws);return '<label>Loại task<select id="workMode" data-field="work_mode"><option value="ad_hoc" '+((rec.work_mode||'ad_hoc')==='ad_hoc'?'selected':'')+'>Task phát sinh</option><option value="routine" '+(routine?'selected':'')+'>Task cố định</option><option value="project" '+(rec.work_mode==='project'?'selected':'')+'>Task theo project</option></select></label><label>Project<select data-field="project_id">'+projectOpts(rec.project_id)+'</select></label><label class="full">Tên task<input data-field="name" value="'+esc(rec.name||'')+'"></label>'+(routine?'<div class="full hint">Task cố định chỉ tạo 1 lần. Mỗi tuần hệ thống tự đưa task lên lịch và lưu trạng thái riêng cho tuần đó.</div><label>Ngày bắt đầu trong tuần<select data-field="weekday_start">'+dayOpts(rec.weekday_start)+'</select></label><label>Ngày kết thúc trong tuần<select data-field="weekday_end">'+dayOpts(rec.weekday_end)+'</select></label><label>Trạng thái tuần này<select id="weeklyStatus">'+['Chưa bắt đầu','Đang thực hiện','Đang duyệt','Cần chỉnh sửa','Hoàn thành'].map(s=>'<option '+(weekly===s?'selected':'')+'>'+s+'</option>').join('')+'</select></label>':'<label>Ngày thực hiện<input type="date" data-field="execution_date" value="'+esc(rec.execution_date||'')+'"></label><label>Deadline<input type="date" data-field="deadline" value="'+esc(rec.deadline||'')+'"></label>')+'<label>Giờ bắt đầu<input type="time" data-field="start_time" value="'+esc((rec.start_time||'').slice(0,5))+'"></label><label>Ưu tiên<input data-field="priority" value="'+esc(rec.priority||'')+'"></label>'+(routine?'':'<label>Trạng thái<select data-field="status">'+['Chưa bắt đầu','Đang thực hiện','Đang duyệt','Cần chỉnh sửa','Hoàn thành'].map(s=>'<option '+(rec.status===s?'selected':'')+'>'+s+'</option>').join('')+'</select></label>')+'<label class="full">Cần làm gì?<textarea data-field="description">'+esc(rec.description||'')+'</textarea></label><label class="full">Cách làm / bước xử lý<textarea data-field="how_to">'+esc(rec.how_to||'')+'</textarea></label><label class="full">Ghi chú<textarea data-field="notes">'+esc(rec.notes||'')+'</textarea></label>'}
-function openForm(table,id=null,preset={}){let rec=id?D[table].find(x=>x.id===id):preset;ctx={table,id};$('#children').innerHTML='';$('#deleteBtn').style.display=id?'inline-block':'none';$('#formTitle').textContent=(id?'Chỉnh ':'Thêm ')+(table==='tasks'?'task':'project');if(table==='tasks'){$('#formHint').textContent='Task cố định dùng lịch theo thứ; task khác dùng ngày cụ thể.';$('#dynamicForm').innerHTML=taskFields(rec);setTimeout(()=>{$('#workMode').onchange=e=>{let draft={...rec,work_mode:e.target.value};$('#dynamicForm').innerHTML=taskFields(draft);setTimeout(()=>$('#workMode').onchange=arguments.callee,0)}},0)}else{$('#formHint').textContent='Project là đầu việc lớn; task con có ngày cụ thể.';$('#dynamicForm').innerHTML='<label>Project ID<input data-field="project_code" value="'+esc(rec.project_code||'')+'"></label><label>Nhóm Project<input data-field="project_group" value="'+esc(rec.project_group||'')+'"></label><label class="full">Tên Project<input data-field="name" value="'+esc(rec.name||'')+'"></label><label>Ngày bắt đầu<input type="date" data-field="start_date" value="'+esc(rec.start_date||'')+'"></label><label>Deadline tổng<input type="date" data-field="deadline" value="'+esc(rec.deadline||'')+'"></label><label>Trạng thái<input data-field="status" value="'+esc(rec.status||'')+'"></label><label>Ưu tiên<input data-field="priority" value="'+esc(rec.priority||'')+'"></label><label class="full">Mục tiêu / Phạm vi<textarea data-field="scope">'+esc(rec.scope||'')+'</textarea></label>';if(id){let ts=D.tasks.filter(t=>t.project_id===id);$('#children').innerHTML='<div class="head" style="margin-top:16px"><b>Task con ('+ts.length+')</b><button class="btn primary" id="addChild">＋ Thêm task con</button></div>'+ts.map(t=>'<div class="event project" data-edit="tasks" data-id="'+t.id+'"><b>'+esc(t.name)+'</b> · '+esc(t.status||'')+'</div>').join('');setTimeout(()=>$('#addChild').onclick=()=>openForm('tasks',null,{project_id:id,work_mode:'project'}),0)}}$('#saveState').textContent='';$('#modalBg').classList.add('on')}
-async function saveForm(){let{table,id}=ctx,record={};$$('[data-field]').forEach(el=>{let v=el.value;if(['weekday_start','weekday_end'].includes(el.dataset.field))v=v?Number(v):null;record[el.dataset.field]=v===''?null:v});if(table==='tasks'){if(record.project_id)record.work_mode='project';if(record.work_mode==='routine'){record.execution_date=null;record.deadline=null;record.project_id=null}else{record.weekday_start=null;record.weekday_end=null}}$('#saveState').textContent='Đang lưu...';let savedId=id;if(id){let{error}=await sb.from(table).update(record).eq('id',id);if(error)return $('#saveState').textContent='⚠ '+error.message}else{let{data,error}=await sb.from(table).insert(record).select('id').single();if(error)return $('#saveState').textContent='⚠ '+error.message;savedId=data.id}if(table==='tasks'&&record.work_mode==='routine'&&$('#weeklyStatus')){let ws=monday(new Date()),status=$('#weeklyStatus').value,{error}=await sb.from('task_weekly_instances').upsert({task_id:savedId,week_start:ws,status},{onConflict:'task_id,week_start'});if(error)return $('#saveState').textContent='⚠ '+error.message}$('#saveState').textContent='✓ Đã lưu';await sync();setTimeout(()=>$('#modalBg').classList.remove('on'),250)}async function del(){if(!ctx?.id||!confirm('Xóa record này nha?'))return;let{error}=await sb.from(ctx.table).delete().eq('id',ctx.id);if(error)return $('#saveState').textContent='⚠ '+error.message;$('#modalBg').classList.remove('on');await sync()}
-function go(v){$$('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.v===v));$$('.view').forEach(x=>x.classList.remove('on'));$('#'+v).classList.add('on');$('#title').textContent={overview:'Tổng quan',calendar:'Lịch công việc',tasks:'Công việc',projects:'Projects'}[v]}
-$('#loginBtn').onclick=login;$('#password').onkeydown=e=>{if(e.key==='Enter')login()};$('#logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};$('#syncBtn').onclick=sync;$('#quickTask').onclick=()=>openForm('tasks');$('#quickProject').onclick=()=>openForm('projects');$('#saveBtn').onclick=saveForm;$('#deleteBtn').onclick=del;$('#closeModal').onclick=()=>$('#modalBg').classList.remove('on');$$('[data-new]').forEach(b=>b.onclick=()=>openForm(b.dataset.new));$$('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));$('#taskSearch').oninput=renderTasks;$('#taskMode').onchange=renderTasks;$('#calMonth').onchange=renderCalendar;$('#prevMonth').onclick=()=>{let d=new Date($('#calMonth').value+'-01T12:00:00');d.setMonth(d.getMonth()-1);$('#calMonth').value=iso(d).slice(0,7);renderCalendar()};$('#nextMonth').onclick=()=>{let d=new Date($('#calMonth').value+'-01T12:00:00');d.setMonth(d.getMonth()+1);$('#calMonth').value=iso(d).slice(0,7);renderCalendar()};document.addEventListener('click',e=>{let r=e.target.closest('[data-edit]');if(r&&!e.target.closest('.link-chip'))openForm(r.dataset.edit,r.dataset.id);let k=e.target.closest('[data-kpi]');if(k){let x=k.dataset.kpi;if(x==='projects')go('projects');else{go('tasks');$('#taskMode').value='';$('#taskSearch').value='';renderTasks()}}});showApp();
+// Darcy's Space — data layer.
+// Supabase client, shared helpers, task rules and the in-memory store.
+// The UI (js/app.js) reads everything through the global `Darcy` object.
+const Darcy = (() => {
+  const SUPABASE_URL = "https://dqxbyikczcfqinxobvsq.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_MOlWnlepLFI8sAyCbEYgJw_cVkskGNk"; // publishable key, protected by RLS
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ---------- Constants ----------
+  const WD = ["", "T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+  const DONE_STATUS = "Hoàn thành";
+  const DEFAULT_STATUS = "Chưa bắt đầu";
+  const TASK_STATUSES = ["Chưa bắt đầu", "Đang thực hiện", "Đang duyệt", "Cần chỉnh sửa", "Hoàn thành"];
+  const KIND_LABEL = { routine: "Task cố định", project: "Theo Project", ad_hoc: "Task phát sinh" };
+
+  // ---------- Text & date helpers ----------
+  const esc = (value) =>
+    String(value ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  const isDone = (status) => /hoàn thành|đã chốt|đã đăng/i.test(status || "");
+  /** Local calendar date of a Date as YYYY-MM-DD. */
+  const iso = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const today = () => iso(new Date());
+  const atNoon = (value) => new Date(value + "T12:00:00");
+  /** "2026-10-14" → "14/10" */
+  const dd = (value) => (value ? value.slice(8, 10) + "/" + value.slice(5, 7) : "—");
+  const addDays = (value, days) => {
+    const date = atNoon(value);
+    date.setDate(date.getDate() + days);
+    return iso(date);
+  };
+  const daysBetween = (a, b) => Math.round((atNoon(b) - atNoon(a)) / 86400000);
+  /** Days from today until `value` (negative = in the past). */
+  const daysFromToday = (value) => daysBetween(today(), value);
+  const deadlineLabel = (value) => {
+    const n = daysFromToday(value);
+    return n < 0 ? `Trễ ${Math.abs(n)} ngày` : n === 0 ? "Hạn hôm nay" : `Còn ${n} ngày`;
+  };
+  /** ISO weekday 1 (Mon) … 7 (Sun). */
+  const weekdayOf = (date) => (date.getDay() === 0 ? 7 : date.getDay());
+  /** Monday of the week containing `value` (YYYY-MM-DD). */
+  const mondayOf = (value) => addDays(value, 1 - weekdayOf(atNoon(value)));
+  const thisWeek = () => mondayOf(today());
+
+  // ---------- Store ----------
+  const state = { tasks: [], projects: [], instances: [], links: [] };
+
+  const taskKind = (task) =>
+    task.work_mode === "routine" ? "routine" : task.work_mode === "project" ? "project" : "ad_hoc";
+  const routineStatus = (task, week) =>
+    state.instances.find((row) => row.task_id === task.id && row.week_start === week)?.status || DEFAULT_STATUS;
+  /** Current status: routine tasks keep a separate status per week. */
+  const taskStatus = (task) => (task.work_mode === "routine" ? routineStatus(task, thisWeek()) : task.status || "");
+  const taskSchedule = (task) =>
+    task.work_mode === "routine"
+      ? `Mỗi tuần ${WD[task.weekday_start] || ""} → ${WD[task.weekday_end] || ""}`
+      : `${dd(task.execution_date)} → ${dd(task.deadline)}`;
+  const projectTasks = (projectId) => state.tasks.filter((task) => task.project_id === projectId);
+  const linksFor = (table, id) => {
+    const key = table === "tasks" ? "task_id" : "project_id";
+    return state.links.filter((link) => link[key] === id).sort((a, b) => (a.position || 0) - (b.position || 0));
+  };
+
+  /**
+   * One shared rule for "today / due / overdue / soon".
+   * Used by Overview and its summary sheet; supabase/telegram_reminders.sql mirrors it.
+   */
+  function daySets() {
+    const now = today(),
+      weekday = weekdayOf(new Date()),
+      open = (task) => !isDone(taskStatus(task)),
+      isRoutine = (task) => task.work_mode === "routine",
+      hasWeek = (task) => task.weekday_start && task.weekday_end,
+      span = (task) => {
+        const start = task.execution_date || task.deadline,
+          end = task.deadline || task.execution_date;
+        return start ? [start, end] : null;
+      };
+    const todayList = state.tasks.filter((task) => {
+      if (!open(task)) return false;
+      if (isRoutine(task))
+        return hasWeek(task) && weekday >= Number(task.weekday_start) && weekday <= Number(task.weekday_end);
+      const range = span(task);
+      return !!range && range[0] <= now && range[1] >= now;
+    });
+    const due = state.tasks.filter(
+      (task) =>
+        open(task) && (isRoutine(task) ? hasWeek(task) && weekday === Number(task.weekday_end) : task.deadline === now),
+    );
+    const over = state.tasks.filter(
+      (task) =>
+        open(task) &&
+        (isRoutine(task)
+          ? hasWeek(task) && weekday > Number(task.weekday_end)
+          : !!task.deadline && task.deadline < now),
+    );
+    const soon = state.tasks.filter((task) => {
+      if (!open(task) || isRoutine(task)) return false;
+      const range = span(task);
+      return !!range && range[0] > now && range[0] <= addDays(now, 7);
+    });
+    const dueIds = new Set(due.map((task) => task.id)),
+      order = (a, b) =>
+        dueIds.has(b.id) - dueIds.has(a.id) || String(a.deadline || "9").localeCompare(String(b.deadline || "9"));
+    return {
+      today: todayList.sort(order),
+      due,
+      over: over.sort(order),
+      soon: soon.sort((a, b) =>
+        String(a.execution_date || a.deadline).localeCompare(String(b.execution_date || b.deadline)),
+      ),
+    };
+  }
+
+  // ---------- Database ----------
+  const check = ({ data, error }) => {
+    if (error) throw error;
+    return data;
+  };
+  const db = {
+    select: async (table) => check(await sb.from(table).select("*")) || [],
+    selectOne: async (table, id) => check(await sb.from(table).select("*").eq("id", id).single()),
+    /** Update when `id` is given, otherwise insert. */
+    save: async (table, payload, id) => {
+      check(await (id ? sb.from(table).update(payload).eq("id", id) : sb.from(table).insert(payload)));
+    },
+    /** Insert and return the new row id. */
+    insertId: async (table, payload) => check(await sb.from(table).insert(payload).select("id").single()).id,
+    remove: async (table, id) => check(await sb.from(table).delete().eq("id", id)),
+    removeMany: async (table, ids) => check(await sb.from(table).delete().in("id", ids)),
+    setWeeklyStatus: async (taskId, week, status) =>
+      check(
+        await sb
+          .from("task_weekly_instances")
+          .upsert({ task_id: taskId, week_start: week, status }, { onConflict: "task_id,week_start" }),
+      ),
+  };
+
+  // ---------- Sync & auth ----------
+  const dbState = () => document.getElementById("dbState");
+  /** Reload tasks, projects, weekly statuses and work links, then fire `darcy:synced`. */
+  async function sync() {
+    dbState().textContent = "Đang đồng bộ...";
+    try {
+      state.tasks = await db.select("tasks");
+      state.projects = await db.select("projects");
+      state.instances = await db.select("task_weekly_instances");
+      try {
+        state.links = await db.select("work_links");
+      } catch (error) {
+        state.links = [];
+        console.error("work_links", error);
+      }
+      dbState().textContent = "✓ Supabase đã đồng bộ";
+      dbState().className = "pill ok";
+      document.dispatchEvent(new Event("darcy:synced"));
+    } catch (error) {
+      dbState().textContent = "⚠ " + error.message;
+    }
+  }
+  const auth = {
+    session: async () => (await sb.auth.getSession()).data.session,
+    signIn: (email, password) => sb.auth.signInWithPassword({ email, password }),
+    signOut: async () => {
+      await sb.auth.signOut();
+      location.reload();
+    },
+  };
+
+  return {
+    WD,
+    DONE_STATUS,
+    DEFAULT_STATUS,
+    TASK_STATUSES,
+    KIND_LABEL,
+    esc,
+    isDone,
+    iso,
+    today,
+    dd,
+    addDays,
+    daysBetween,
+    daysFromToday,
+    deadlineLabel,
+    mondayOf,
+    thisWeek,
+    state,
+    taskKind,
+    routineStatus,
+    taskStatus,
+    taskSchedule,
+    projectTasks,
+    linksFor,
+    daySets,
+    db,
+    sync,
+    auth,
+  };
+})();
